@@ -26,7 +26,10 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0a1a0a"
       },
-      "permissions": ["CAMERA", "android.permission.CAMERA"],
+      "permissions": [
+        "CAMERA",
+        "android.permission.CAMERA"
+      ],
       "softwareKeyboardLayoutMode": "pan"
     },
     "plugins": [
@@ -43,6 +46,12 @@
           "iosAppId": "ca-app-pub-3940256099942544~1458002511"
         }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "590e9b8f-9b9f-4e01-9310-1f2f133ecd5a"
+      }
+    },
+    "owner": "cchoate09"
   }
 }
