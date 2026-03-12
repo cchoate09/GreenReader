@@ -1,0 +1,48 @@
+{
+  "expo": {
+    "name": "GreenReader",
+    "slug": "green-reader",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0a1a0a"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.greenreader.app",
+      "infoPlist": {
+        "NSCameraUsageDescription": "GreenReader uses your camera to display an AR putting line overlay on the green.",
+        "NSMotionUsageDescription": "GreenReader uses motion sensors to detect the slope of the putting green."
+      }
+    },
+    "android": {
+      "package": "com.greenreader.app",
+      "versionCode": 1,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0a1a0a"
+      },
+      "permissions": ["CAMERA", "android.permission.CAMERA"],
+      "softwareKeyboardLayoutMode": "pan"
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "GreenReader uses your camera to display an AR putting line overlay."
+        }
+      ],
+      [
+        "react-native-google-mobile-ads",
+        {
+          "androidAppId": "ca-app-pub-8879184280264151~7714309499",
+          "iosAppId": "ca-app-pub-3940256099942544~1458002511"
+        }
+      ]
+    ]
+  }
+}
