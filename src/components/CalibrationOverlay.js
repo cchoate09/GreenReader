@@ -19,18 +19,16 @@ const STEPS = [
 ];
 
 /**
- * Multi-step calibration overlay.
- *
- * After the first capture the user can tap "Done" (single-point) or
- * "Next Point" to walk to the midpoint/hole and add more readings.
+ * Calibration overlay for quick single reads and advanced compound reads.
  *
  * Props:
+ *   mode         – 'single' | 'compound'
  *   gamma, beta  – live tilt degrees
  *   liveText     – live slope string
- *   onCapture    – receives array [{slopeX, slopeY, pos}, ...]
+ *   onCapture    – receives array [{ slopeX, slopeY, pos, stabilityScore, gammaStd, betaStd, sampleCount }, ...]
  *   onCancel     – close overlay
  */
-export default function CalibrationOverlay({ gamma, beta, liveText, onCapture, onCancel }) {
+export default function CalibrationOverlay({ mode, gamma, beta, liveText, onCapture, onCancel }) {
   const bubbleX = useRef(new Animated.Value(HALF)).current;
   const bubbleY = useRef(new Animated.Value(HALF)).current;
 
@@ -42,7 +40,27 @@ export default function CalibrationOverlay({ gamma, beta, liveText, onCapture, o
   // Multi-step state
   const [readings, setReadings] = useState([]);
   const [step, setStep] = useState(0);         // which step is next to capture
-  const [mode, setMode] = useState('capturing'); // 'capturing' | 'between'
+  const [overlayMode, setOverlayMode] = useState('capturing'); // 'capturing' | 'between'
+  const isSingleRead = mode === 'single';
+
+  const stdDev = useCallback((values) => {
+    if (!values.length) return 0;
+    const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
+    const variance = values.reduce((sum, value) => sum + ((value - mean) ** 2), 0) / values.length;
+    return Math.sqrt(variance);
+  }, []);
+
+  const clearBuffers = useCallback(() => {
+    gammaBuffer.current = [];
+    betaBuffer.current = [];
+  }, []);
+
+  useEffect(() => {
+    clearBuffers();
+    setReadings([]);
+    setStep(0);
+    setOverlayMode('capturing');
+  }, [mode, clearBuffers]);
 
   useEffect(() => {
     // Push to rolling buffer
@@ -66,35 +84,56 @@ export default function CalibrationOverlay({ gamma, beta, liveText, onCapture, o
     const avg = (arr) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
     const smoothGamma = avg(gammaBuffer.current);
     const smoothBeta  = avg(betaBuffer.current);
-    const newReadings = [...readings, { slopeX: smoothGamma, slopeY: smoothBeta, pos: STEPS[step].pos }];
+    const gammaStd = stdDev(gammaBuffer.current);
+    const betaStd = stdDev(betaBuffer.current);
+    const stabilityScore = Math.max(0, Math.min(100, Math.round(100 - ((gammaStd + betaStd) * 60))));
+    const sampleCount = Math.min(gammaBuffer.current.length, betaBuffer.current.length);
+    const nextReading = {
+      slopeX: smoothGamma,
+      slopeY: smoothBeta,
+      pos: STEPS[step].pos,
+      stabilityScore,
+      gammaStd,
+      betaStd,
+      sampleCount,
+    };
+    const newReadings = [...readings, nextReading];
+
+    if (isSingleRead) {
+      onCapture([nextReading]);
+      return;
+    }
+
     setReadings(newReadings);
 
     if (step >= 2) {
       // Final step — auto-finish
       onCapture(newReadings);
     } else {
-      setMode('between');
+      setOverlayMode('between');
     }
-  }, [readings, step, gamma, beta, onCapture]);
+  }, [isSingleRead, onCapture, readings, step, stdDev]);
 
   const nextPoint = useCallback(() => {
+    clearBuffers();
     setStep((s) => s + 1);
-    setMode('capturing');
-  }, []);
+    setOverlayMode('capturing');
+  }, [clearBuffers]);
 
   const finish = useCallback(() => {
     if (readings.length > 0) onCapture(readings);
   }, [readings, onCapture]);
 
   const stepInfo = STEPS[step];
-  const isCapturing = mode === 'capturing';
+  const isCapturing = overlayMode === 'capturing';
   const readingCount = readings.length;
+  const visibleSteps = isSingleRead ? [STEPS[0]] : STEPS;
 
   return (
     <View style={styles.overlay}>
       {/* Step indicator */}
       <View style={styles.stepRow}>
-        {STEPS.map((s, i) => (
+        {visibleSteps.map((s, i) => (
           <View key={i} style={[styles.stepDot, i < readingCount && styles.stepDotDone, i === step && isCapturing && styles.stepDotActive]} />
         ))}
       </View>
@@ -118,12 +157,18 @@ export default function CalibrationOverlay({ gamma, beta, liveText, onCapture, o
           </View>
 
           <Text style={styles.title}>
-            {readingCount === 0 ? 'Read the Green' : `Step ${step + 1}: ${stepInfo.label}`}
+            {isSingleRead
+              ? 'Quick Read'
+              : readingCount === 0
+                ? 'Advanced Read'
+                : `Step ${step + 1}: ${stepInfo.label}`}
           </Text>
           <Text style={styles.desc}>
-            {readingCount === 0
-              ? 'Lay phone flat (face up) on the green near your ball, top edge toward the hole.'
-              : `Lay phone flat ${stepInfo.label.toLowerCase()}, top edge toward hole.`}
+            {isSingleRead
+              ? 'Lay your phone flat by the ball with the top edge pointed at the hole.'
+              : readingCount === 0
+                ? 'Lay phone flat (face up) on the green near your ball, top edge toward the hole.'
+                : `Lay phone flat ${stepInfo.label.toLowerCase()}, top edge toward hole.`}
           </Text>
           <Text style={styles.liveText}>{liveText || 'Waiting for motion data...'}</Text>
 

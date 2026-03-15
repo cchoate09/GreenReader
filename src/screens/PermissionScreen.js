@@ -10,10 +10,10 @@ import {
 
 const HOW_TO = [
   'Tap Enable to grant camera & motion access.',
-  'Tap Read Slope → lay phone flat on the green near your ball.',
-  'Tap Capture Slope to lock in the reading.',
-  'Pick up phone, set distance, and aim at the hole.',
-  'Follow the yellow aim line and speed guide.',
+  'Tap Read Slope and lay the phone flat near your ball.',
+  'Tap Set Hole and stand at the ball to place the cup.',
+  'Use Aim and Play As as a practice read, then confirm with your eyes.',
+  'Open Advanced only when you want grain, speed testing, or training mode.',
 ];
 
 /**
@@ -28,7 +28,7 @@ export default function PermissionScreen({ onEnable }) {
         <Text style={styles.icon}>⛳</Text>
         <Text style={styles.title}>GreenReader</Text>
         <Text style={styles.subtitle}>
-          AR putting line, break detection, and speed recommendations — powered by your phone's sensors.
+          Practice green-reading aid with quick AR aim and pace guidance powered by your phone sensors.
         </Text>
 
         <View style={styles.howTo}>
@@ -45,7 +45,7 @@ export default function PermissionScreen({ onEnable }) {
 
         <View style={styles.noteBox}>
           <Text style={styles.noteText}>
-            📷 Camera is used for AR overlay only — no video is stored or transmitted.
+            Camera is used for the live overlay only. GreenReader is designed for practice and training, and camera or sensor data is not stored.
           </Text>
         </View>
 

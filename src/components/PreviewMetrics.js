@@ -6,67 +6,63 @@ import {
   TouchableOpacity,
   Platform,
 } from 'react-native';
-import { aimPoint, compoundAimPoint, effectiveDistance } from '../utils/puttingPhysics';
+import { getReadOutcome } from '../utils/puttRead';
 
-/**
- * Simplified full-screen preview overlay.
- * Shows only the two key putting metrics:
- *   1. How far to hit it (effective / playing distance)
- *   2. How far left/right to start the line (aim point)
- * Plus a close button to return to the full UI.
- */
+function qualityColor(level) {
+  if (level === 'high') return '#4caf50';
+  if (level === 'medium') return '#ffb300';
+  if (level === 'low') return '#ff7043';
+  return '#90a4ae';
+}
+
 export default function PreviewMetrics({
-  slopeX,
-  slopeY,
-  distance,
-  greenSpeed,
-  slopeReadings,
+  slope,
+  settings,
+  hole,
+  readQuality,
   onClose,
 }) {
-  const hasMulti = slopeReadings && slopeReadings.length > 1;
+  const outcome = getReadOutcome({
+    hasSlope: slope.hasSlope,
+    slopeX: slope.slopeX,
+    slopeY: slope.slopeY,
+    distance: settings.distance,
+    greenSpeed: settings.greenSpeed,
+    slopeReadings: slope.readings,
+    grainDir: settings.grainDir,
+  });
 
-  const aim = hasMulti
-    ? compoundAimPoint(slopeReadings, distance, greenSpeed)
-    : aimPoint(slopeX, distance, greenSpeed, slopeY);
-
-  const playDist = effectiveDistance(slopeY, distance, greenSpeed);
-
-  // Format aim as a simple direction string
-  let aimText = 'Straight';
-  if (aim.dir) {
-    aimText = `${aim.inches}" ${aim.dirFull}`;
-  }
+  const aimText = outcome.aim?.dir ? `${outcome.aim.inches}" ${outcome.aim.dirFull}` : 'Straight';
+  const holeText = hole.source === 'manual' ? 'Manual hole' : 'Auto hole';
 
   return (
     <View style={styles.container}>
-      {/* Top metric: Hit distance */}
-      <View style={styles.metricCard}>
-        <Text style={styles.metricLabel}>HIT IT</Text>
-        <Text style={styles.metricValue}>{playDist} ft</Text>
-        {playDist !== distance && (
-          <Text style={styles.metricSub}>
-            {playDist > distance ? 'Uphill' : 'Downhill'} — actual {distance} ft
+      <View style={styles.summaryRow}>
+        <View style={styles.summaryPill}>
+          <Text style={[styles.summaryPillText, { color: qualityColor(readQuality.level) }]}>
+            {readQuality.label}
           </Text>
-        )}
+        </View>
+        <Text style={styles.summaryMeta}>{holeText}</Text>
       </View>
 
-      {/* Bottom metric: Start line */}
-      <View style={styles.metricCard}>
-        <Text style={styles.metricLabel}>START LINE</Text>
-        <Text style={[styles.metricValue, aim.dir ? styles.metricAim : styles.metricStraight]}>
-          {aimText}
-        </Text>
-        {aim.dir && (
-          <Text style={styles.metricSub}>
-            Aim {aim.dirFull} of the hole
-          </Text>
-        )}
-      </View>
+      <View style={styles.metricsRow}>
+        <View style={styles.metricCard}>
+          <Text style={styles.metricLabel}>HIT IT</Text>
+          <Text style={styles.metricValue}>{outcome.playDist} ft</Text>
+        </View>
 
-      {/* Close button */}
-      <TouchableOpacity style={styles.closeBtn} onPress={onClose} activeOpacity={0.8}>
-        <Text style={styles.closeTxt}>Close</Text>
-      </TouchableOpacity>
+        <View style={styles.metricCard}>
+          <Text style={styles.metricLabel}>AIM</Text>
+          <Text style={[styles.metricValue, outcome.aim?.dir ? styles.metricAim : styles.metricStraight]}>
+            {aimText}
+          </Text>
+        </View>
+
+        <TouchableOpacity style={styles.closeBtn} onPress={onClose} activeOpacity={0.8}>
+          <Text style={styles.closeTxt}>X</Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }
@@ -77,32 +73,60 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    paddingHorizontal: 20,
-    paddingBottom: Platform.OS === 'ios' ? 44 : 32,
-    paddingTop: 16,
+    paddingHorizontal: 12,
+    paddingBottom: Platform.OS === 'ios' ? 38 : 16,
+    paddingTop: 8,
+  },
+  summaryRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    justifyContent: 'space-between',
+    marginBottom: 8,
+    paddingHorizontal: 2,
+  },
+  summaryPill: {
+    backgroundColor: 'rgba(0,0,0,0.38)',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+  },
+  summaryPillText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  summaryMeta: {
+    fontSize: 11,
+    color: '#90a4ae',
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+  },
+  metricsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   metricCard: {
-    width: '100%',
-    backgroundColor: 'rgba(0,0,0,0.45)',
-    borderRadius: 18,
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: 'rgba(76,175,80,0.25)',
-    paddingVertical: 14,
-    paddingHorizontal: 20,
+    borderColor: 'rgba(76,175,80,0.2)',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
     alignItems: 'center',
   },
   metricLabel: {
-    fontSize: 12,
+    fontSize: 9,
     fontWeight: '700',
     color: '#9e9e9e',
-    letterSpacing: 1.5,
+    letterSpacing: 1.2,
     textTransform: 'uppercase',
-    marginBottom: 4,
+    marginBottom: 2,
   },
   metricValue: {
-    fontSize: 36,
+    fontSize: 22,
     fontWeight: '900',
     color: '#4caf50',
   },
@@ -112,23 +136,19 @@ const styles = StyleSheet.create({
   metricStraight: {
     color: '#90caf9',
   },
-  metricSub: {
-    fontSize: 13,
-    color: '#90a4ae',
-    marginTop: 4,
-  },
   closeBtn: {
-    backgroundColor: 'rgba(255,255,255,0.10)',
+    backgroundColor: 'rgba(255,255,255,0.08)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.20)',
-    borderRadius: 24,
-    paddingVertical: 12,
-    paddingHorizontal: 44,
-    marginTop: 4,
+    borderColor: 'rgba(255,255,255,0.15)',
+    borderRadius: 20,
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   closeTxt: {
     color: '#fff',
     fontWeight: '700',
-    fontSize: 15,
+    fontSize: 16,
   },
 });

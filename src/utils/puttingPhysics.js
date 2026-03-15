@@ -158,9 +158,14 @@ export function speedInfo(slopeYDeg, distanceFt) {
  * @param {number} holeYNorm    - 0..1 normalised Y position on screen
  * @param {number} phoneBetaDeg - current phone beta in degrees (from DeviceMotion)
  */
-const TILT_BIAS_DEG = 4;
+const TILT_BIAS_DEG = 3;
+// Field-tested correction for the remaining short-read bias, with a slightly
+// stronger boost for farther holes where perspective compression is harsher.
+const DISTANCE_CALIBRATION_BASE = 1.08;
+const DISTANCE_CALIBRATION_RANGE = 0.16;
 
 export function estimateDistanceFromScreen(holeYNorm, phoneBetaDeg) {
+  const clampedHoleY = Math.max(0, Math.min(1, holeYNorm ?? 0.5));
   // Clamp beta to reasonable range (0-85°) to avoid singularities
   let beta = phoneBetaDeg != null ? Math.abs(phoneBetaDeg) : DEFAULT_PHONE_TILT;
   beta = Math.max(0, Math.min(85, beta));
@@ -173,15 +178,16 @@ export function estimateDistanceFromScreen(holeYNorm, phoneBetaDeg) {
   const halfFov = CAMERA_FOV_V / 2;
 
   // Ray angle below horizontal for the hole's y-position
-  const rayAngleDeg = cameraBelowHoriz - halfFov + holeYNorm * CAMERA_FOV_V;
+  const rayAngleDeg = cameraBelowHoriz - halfFov + clampedHoleY * CAMERA_FOV_V;
 
   // If ray is at or above horizontal, the hole is very far away
   if (rayAngleDeg <= 1) return 50;
 
   const rayAngleRad = rayAngleDeg * RAD;
   const dist = PHONE_HEIGHT_FT / Math.tan(rayAngleRad);
+  const distanceCalibration = DISTANCE_CALIBRATION_BASE + ((1 - clampedHoleY) * DISTANCE_CALIBRATION_RANGE);
 
-  return Math.max(3, Math.min(50, Math.round(dist)));
+  return Math.max(3, Math.min(50, Math.round(dist * distanceCalibration)));
 }
 
 // ── Effective distance ──────────────────────────────────────────────────────
@@ -299,6 +305,52 @@ export function elevationPoints(slopeReadings, distanceFt) {
   }
 
   return pts;
+}
+
+// ── Grain ───────────────────────────────────────────────────────────────────
+
+/**
+ * Grain directions (compass heading the grain grows TOWARD).
+ * 'none' means no grain adjustment.
+ */
+export const GRAIN_OPTIONS = [
+  { key: 'none', label: 'None' },
+  { key: 'with',    label: 'With' },
+  { key: 'against', label: 'Against' },
+  { key: 'left',    label: '← Left' },
+  { key: 'right',   label: 'Right →' },
+];
+
+/**
+ * Grain multipliers for speed and break.
+ *
+ * "With" grain = putting in the direction the grain grows → faster, less break needed
+ * "Against" grain = putting into the grain → slower, more break
+ * Left/right grain adds a lateral push.
+ *
+ * @param {string} grainDir - one of GRAIN_OPTIONS keys
+ * @returns {{ speedMult: number, breakMult: number, lateralInches: number }}
+ *   speedMult:     multiply effective distance by this (>1 = plays longer / uphill feel)
+ *   breakMult:     multiply break inches by this
+ *   lateralInches: extra inches of lateral push from grain (positive = right push)
+ */
+export function grainEffect(grainDir, distanceFt) {
+  switch (grainDir) {
+    case 'with':
+      // Ball rolls faster → plays shorter (like slight downhill)
+      return { speedMult: 0.88, breakMult: 0.85, lateralInches: 0 };
+    case 'against':
+      // Ball rolls slower → plays longer (like slight uphill), more break
+      return { speedMult: 1.15, breakMult: 1.15, lateralInches: 0 };
+    case 'left':
+      // Grain pushes ball left — add lateral inches proportional to distance
+      return { speedMult: 1.0, breakMult: 1.0, lateralInches: -(distanceFt * 0.25) };
+    case 'right':
+      // Grain pushes ball right
+      return { speedMult: 1.0, breakMult: 1.0, lateralInches: (distanceFt * 0.25) };
+    default:
+      return { speedMult: 1.0, breakMult: 1.0, lateralInches: 0 };
+  }
 }
 
 // ── Compound break (multi-point) ────────────────────────────────────────────

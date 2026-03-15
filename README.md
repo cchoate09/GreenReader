@@ -1,12 +1,14 @@
-# GreenReader — Putting Simulator
+# GreenReader - Practice Putting Aid
 
-AR putting line, break detection, and speed recommendations for **iOS and Android**.
+Quick AR practice reads, break guidance, and pace recommendations for iOS and Android.
 
-Built with Expo / React Native — one codebase, two platforms.
+Built with Expo / React Native - one codebase, two platforms.
+
+GreenReader is designed as a practice and training tool. Treat every read as guidance to compare against your own green-reading process, and check local or competition rules before using any device during play.
 
 ---
 
-## Quick Start (no Xcode or Android Studio needed)
+## Quick Start
 
 ```bash
 cd GreenReader
@@ -14,8 +16,8 @@ npm install
 npx expo start
 ```
 
-- **iPhone** → install **Expo Go** from the App Store, scan the QR code
-- **Android** → install **Expo Go** from Google Play, scan the QR code
+- iPhone: install Expo Go from the App Store and scan the QR code
+- Android: install Expo Go from Google Play and scan the QR code
 
 ---
 
@@ -23,13 +25,13 @@ npx expo start
 
 | Step | Action |
 |------|--------|
-| 1 | Open app → tap **Enable Camera & Sensors** |
-| 2 | Tap **Read Slope** → lay phone flat on green near ball |
-| 3 | Watch the bubble level settle, tap **Capture Slope** |
-| 4 | Pick up phone, set the distance, aim camera at the hole |
-| 5 | Follow the **yellow aim line** and **speed card** |
+| 1 | Open the app and tap **Enable Camera & Sensors** |
+| 2 | Tap **Read Slope** and lay the phone flat near your ball |
+| 3 | Tap **Set Hole** and stand at the ball to place the cup |
+| 4 | Review the quick **Aim** and **Play As** outputs |
+| 5 | Open **Advanced + Training** only when you want grain, speed tests, multi-point reads, or training mode |
 
-**Android tip:** Press the hardware back button to dismiss the calibration overlay.
+Android tip: the hardware back button closes calibration, hole placement, preview, and training overlays.
 
 ---
 
@@ -37,16 +39,24 @@ npx expo start
 
 | Sensor | Use |
 |--------|-----|
-| DeviceMotion `gamma` | Left/right tilt → break direction & amount |
-| DeviceMotion `beta`  | Front/back tilt → uphill / downhill grade |
-| Camera (rear)        | AR background — no video is stored |
+| DeviceMotion `gamma` | Left/right tilt for break direction and amount |
+| DeviceMotion `beta` | Front/back tilt for uphill / downhill grade |
+| Rear camera | Live AR background only - no video is stored |
 
 ### Physics Model
 
-- **Break** `≈ slopeAngle° × distance² × 0.018` inches
-  _(3° slope, 15 ft → ~12")_
-- **Speed** is categorized 1–5 (Tap It → Full Commit) based on distance and grade
-- The bezier curve maps break to pixel offset: `(slopeX / 45) × screenWidth × distanceFactor`
+- Break is estimated with a distance-squared relationship scaled by slope and green speed.
+- Pace is presented as a "play as" distance rather than a raw force number.
+- The AR curve maps the read into screen-space control points for the projected path.
+- This pass adds read-quality scoring and a simpler default flow; it does not change the underlying formulas.
+
+---
+
+## Product Direction
+
+- Default mode is a quick practice read: single slope capture, manual hole placement, confidence badge, and simple output cards.
+- Advanced settings hide green speed, grain, multi-point reads, speed testing, and training mode until the user asks for them.
+- Training mode lets the golfer guess the read first, then compare against the measured output.
 
 ---
 
@@ -56,87 +66,60 @@ npx expo start
 
 ```bash
 npm install -g eas-cli
-eas login          # create a free Expo account at expo.dev
+eas login
 ```
 
-### iOS (App Store)
+### iOS
 
-Requires: Apple Developer account ($99/yr)
+Requires an Apple Developer account.
 
 ```bash
 eas build --platform ios --profile production
 eas submit --platform ios --profile production
 ```
 
-### Android (Google Play)
+### Android
 
-Requires: Google Play Developer account ($25 one-time)
+Requires a Google Play Developer account.
 
 ```bash
 eas build --platform android --profile production
 eas submit --platform android --profile production
 ```
 
-### Both at once
-
-```bash
-eas build --platform all --profile production
-```
-
-### Preview APK (sideload to Android — no Play Store needed)
+### Preview APK
 
 ```bash
 eas build --platform android --profile preview
-# Download the .apk from the EAS dashboard and install directly on your device
 ```
-
----
-
-## Before Submitting
-
-### `app.json` — update these values
-
-| Field | Where | What to set |
-|-------|-------|-------------|
-| `ios.bundleIdentifier` | `app.json` | Your reverse-domain ID, e.g. `com.johndoe.greenreader` |
-| `android.package` | `app.json` | Same format, e.g. `com.johndoe.greenreader` |
-| `android.versionCode` | `app.json` | Increment for every Play Store build |
-
-### `eas.json` — update these values for submission
-
-| Field | Value |
-|-------|-------|
-| `submit.production.ios.appleId` | Your Apple ID email |
-| `submit.production.ios.ascAppId` | App ID from App Store Connect |
-| `submit.production.ios.appleTeamId` | Your Apple Developer Team ID |
-| `submit.production.android.serviceAccountKeyPath` | Path to your Google Play JSON key |
-
-### Assets needed
-
-- `assets/icon.png` — 1024×1024 (iOS + Android)
-- `assets/splash.png` — 1284×2778 recommended
-- `assets/adaptive-icon.png` — 1024×1024 (Android adaptive icon foreground)
 
 ---
 
 ## Project Structure
 
-```
+```text
 GreenReader/
-├── App.js                        ← entry point, permissions (iOS + Android)
-├── app.json                      ← Expo config for both platforms
-├── eas.json                      ← EAS Build profiles (dev / preview / production)
-├── package.json
-└── src/
-    ├── screens/
-    │   ├── PermissionScreen.js   ← welcome / onboarding
-    │   └── MainScreen.js         ← camera + AR + Android BackHandler
-    ├── components/
-    │   ├── PuttingOverlay.js     ← SVG AR line (react-native-svg)
-    │   ├── CalibrationOverlay.js ← animated bubble level + capture UI
-    │   └── BottomPanel.js        ← distance slider, stats, speed card, buttons
-    ├── hooks/
-    │   └── useMotionSensors.js   ← expo-sensors DeviceMotion hook
-    └── utils/
-        └── puttingPhysics.js     ← break calc, speed labels, grade labels
+|-- App.js
+|-- app.json
+|-- eas.json
+|-- package.json
+`-- src/
+    |-- screens/
+    |   |-- PermissionScreen.js
+    |   `-- MainScreen.js
+    |-- components/
+    |   |-- BottomPanel.js
+    |   |-- CalibrationOverlay.js
+    |   |-- GuessOverlay.js
+    |   |-- PreviewMetrics.js
+    |   |-- PuttingOverlay.js
+    |   `-- StimpCalibration.js
+    |-- hooks/
+    |   |-- useMotionSensors.js
+    |   `-- usePuttSession.js
+    `-- utils/
+        |-- advancedSettingsStorage.js
+        |-- puttRead.js
+        |-- puttingPhysics.js
+        `-- readQuality.js
 ```

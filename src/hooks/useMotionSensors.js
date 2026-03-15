@@ -28,7 +28,7 @@ export function useMotionSensors() {
         if (!rotation) return;
         // rotation: { alpha, beta, gamma } in radians
         setGamma(toDeg(rotation.gamma ?? 0));
-        setBeta(toDeg(rotation.beta  ?? 0));
+        setBeta(-toDeg(rotation.beta  ?? 0)); // negated: phone tilting forward = uphill
       });
     });
 

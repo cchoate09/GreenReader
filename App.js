@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { registerRootComponent } from 'expo';
 import { StatusBar } from 'expo-status-bar';
 import { useCameraPermissions } from 'expo-camera';
@@ -21,6 +21,24 @@ try {
 export default function App() {
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const [ready, setReady] = useState(false);
+  const [checked, setChecked] = useState(false);
+
+  // Auto-skip welcome screen if permissions are already granted
+  useEffect(() => {
+    if (checked) return;
+    if (cameraPermission == null) return; // still loading
+    setChecked(true);
+    if (cameraPermission.granted) {
+      // On Android motion sensors don't need explicit permission
+      if (Platform.OS === 'android') {
+        setReady(true);
+      } else {
+        DeviceMotion.getPermissionsAsync().then(({ status }) => {
+          if (status === 'granted') setReady(true);
+        });
+      }
+    }
+  }, [cameraPermission, checked]);
 
   const handleEnable = useCallback(async () => {
     // 1. Camera permission

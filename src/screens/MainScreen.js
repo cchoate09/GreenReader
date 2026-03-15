@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -17,316 +17,425 @@ import CalibrationOverlay from '../components/CalibrationOverlay';
 import BottomPanel from '../components/BottomPanel';
 import StimpCalibration from '../components/StimpCalibration';
 import PreviewMetrics from '../components/PreviewMetrics';
+import GuessOverlay, { GuessResults } from '../components/GuessOverlay';
 import AdBanner from '../components/AdBanner';
 import { useMotionSensors } from '../hooks/useMotionSensors';
+import { usePuttSession } from '../hooks/usePuttSession';
 import { detectHoleInPhoto } from '../utils/holeDetection';
-import { estimateDistanceFromScreen, DEFAULT_STIMP } from '../utils/puttingPhysics';
+import { estimateDistanceFromScreen } from '../utils/puttingPhysics';
+import { getReadOutcome } from '../utils/puttRead';
+import { getReadQuality } from '../utils/readQuality';
 
 const ANDROID_STATUS_BAR = Platform.OS === 'android' ? (StatusBar.currentHeight ?? 24) : 0;
 
 export default function MainScreen() {
   const { width, height } = useWindowDimensions();
   const cameraRef = useRef(null);
-
-  // Sensor data
+  const animFrameRef = useRef(null);
+  const betaRef = useRef(0);
   const { gamma, beta } = useMotionSensors();
+  const { state, dispatch } = usePuttSession();
+  const [animT, setAnimT] = useState(null);
+  const [isAnimating, setIsAnimating] = useState(false);
 
-  // Keep a ref to the latest beta so callbacks can read it without stale closures
-  const betaRef = useRef(beta);
   betaRef.current = beta;
 
-  // Green speed (Stimpmeter)
-  const [greenSpeed, setGreenSpeed] = useState(DEFAULT_STIMP);
+  const readQuality = getReadQuality({
+    hasSlope: state.slope.hasSlope,
+    readings: state.slope.readings,
+    hole: state.hole,
+  });
+  const holePlacementActive = state.hole.status === 'placing';
+  const holeNeedsConfirm = state.hole.status === 'autoDetected';
+  const previewReady = state.slope.hasSlope && state.hole.status === 'confirmed';
 
-  // Slope state — now supports multi-point readings
-  const [slopeReadings, setSlopeReadings] = useState([]); // [{slopeX, slopeY, pos}]
-  const [slopeX, setSlopeX]     = useState(0);
-  const [slopeY, setSlopeY]     = useState(0);
-  const [hasSlope, setHasSlope] = useState(false);
-
-  // Hole position state
-  const [holePos, setHolePos]               = useState(null);
-  const [isUserPlacedHole, setIsUserPlaced] = useState(false);
-  const [isPlacingHole, setIsPlacingHole]   = useState(false);
-  const [isScanning, setIsScanning]         = useState(false);
-
-  // General UI state
-  const [isCalibrating, setIsCalibrating]       = useState(false);
-  const [isStimpCalibrating, setIsStimpCalibrating] = useState(false);
-  const [distance, setDistance] = useState(15);
-  const [modePill, setModePill] = useState('READ');
-
-  // Putt preview animation
-  const [animT, setAnimT]             = useState(null); // null = not animating, 0..1 = progress
-  const [isAnimating, setIsAnimating] = useState(false);
-  const [isPreviewMode, setIsPreviewMode] = useState(false);
-  const animFrameRef = useRef(null);
-
-  // ── Calibration ───────────────────────────────────────────────────────────
-  const mag      = Math.sqrt(gamma ** 2 + beta ** 2).toFixed(1);
-  const dirText  = gamma > 0.5 ? 'breaks right' : gamma < -0.5 ? 'breaks left' : 'straight';
+  const mag = Math.sqrt((gamma ** 2) + (beta ** 2)).toFixed(1);
+  const dirText = gamma > 0.5 ? 'breaks right' : gamma < -0.5 ? 'breaks left' : 'straight';
   const gradText = beta > 0.8 ? ', downhill' : beta < -0.8 ? ', uphill' : '';
-  const liveText = `${mag}\u00B0 slope \u2014 ${dirText}${gradText}`;
+  const liveText = `${mag} deg slope - ${dirText}${gradText}`;
 
-  const openCalibration = useCallback(() => {
-    setIsCalibrating(true);
-    setModePill('CAL');
-  }, []);
+  const openQuickCalibration = useCallback(() => {
+    dispatch({ type: 'OPEN_CALIBRATION', mode: 'single' });
+  }, [dispatch]);
+
+  const openAdvancedCalibration = useCallback(() => {
+    dispatch({ type: 'OPEN_CALIBRATION', mode: 'compound' });
+  }, [dispatch]);
 
   const cancelCalibration = useCallback(() => {
-    setIsCalibrating(false);
-    setModePill('READ');
-  }, []);
+    dispatch({ type: 'CANCEL_CALIBRATION' });
+  }, [dispatch]);
 
-  /** Receives array of readings from the multi-step CalibrationOverlay. */
   const captureSlope = useCallback((readings) => {
-    setSlopeReadings(readings);
-    // Primary slope from first (ball) reading
-    setSlopeX(readings[0].slopeX);
-    setSlopeY(readings[0].slopeY);
-    setHasSlope(true);
-    setIsCalibrating(false);
-    setModePill('READ');
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-  }, []);
+    let guessActual = null;
 
-  const resetSlope = useCallback(() => {
-    setSlopeX(0);
-    setSlopeY(0);
-    setSlopeReadings([]);
-    setHasSlope(false);
-    setHolePos(null);
-    setIsUserPlaced(false);
-    setAnimT(null);
+    if (state.guess.pending) {
+      const outcome = getReadOutcome({
+        hasSlope: true,
+        slopeX: readings[0]?.slopeX ?? 0,
+        slopeY: readings[0]?.slopeY ?? 0,
+        distance: state.settings.distance,
+        greenSpeed: state.settings.greenSpeed,
+        slopeReadings: readings,
+        grainDir: state.settings.grainDir,
+      });
+
+      guessActual = {
+        breakDir: outcome.aim?.dir ?? null,
+        breakInches: outcome.aim?.inches ?? 0,
+        playDist: outcome.playDist ?? state.settings.distance,
+      };
+    }
+
+    dispatch({ type: 'CAPTURE_SLOPE', readings, guessActual });
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  }, [dispatch, state.guess.pending, state.settings.distance, state.settings.greenSpeed, state.settings.grainDir]);
+
+  const resetSession = useCallback(() => {
+    dispatch({ type: 'RESET_SESSION' });
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-  }, []);
+  }, [dispatch]);
 
-  // ── Stimpmeter calibration ────────────────────────────────────────────────
-  const openStimpCalibration = useCallback(() => {
-    setIsStimpCalibrating(true);
-  }, []);
-
-  const handleStimpResult = useCallback((stimp) => {
-    setGreenSpeed(stimp);
-    setIsStimpCalibrating(false);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-  }, []);
-
-  // ── Putt preview animation ────────────────────────────────────────────────
   const startPreview = useCallback(() => {
-    if (isAnimating) return;
-    setIsPreviewMode(true);
+    if (!previewReady || isAnimating) return;
+
+    dispatch({ type: 'OPEN_PREVIEW' });
     setIsAnimating(true);
     setAnimT(0);
+
     const start = Date.now();
     const duration = 2500;
 
     const tick = () => {
       const elapsed = Date.now() - start;
       const t = Math.min(1, elapsed / duration);
-      const eased = 1 - (1 - t) * (1 - t);
+      const eased = 1 - ((1 - t) * (1 - t));
       setAnimT(eased);
+
       if (t < 1) {
         animFrameRef.current = requestAnimationFrame(tick);
       } else {
-        // Hold at hole — stay in preview mode until user closes
         setTimeout(() => {
           setAnimT(null);
           setIsAnimating(false);
         }, 600);
       }
     };
+
     animFrameRef.current = requestAnimationFrame(tick);
-  }, [isAnimating]);
+  }, [dispatch, isAnimating, previewReady]);
 
   const closePreview = useCallback(() => {
-    setIsPreviewMode(false);
+    dispatch({ type: 'CLOSE_PREVIEW' });
     setIsAnimating(false);
     setAnimT(null);
     if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
-  }, []);
+  }, [dispatch]);
 
-  // Clean up animation on unmount
   useEffect(() => () => {
     if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
   }, []);
 
-  // ── Android back button ───────────────────────────────────────────────────
   useEffect(() => {
     if (Platform.OS !== 'android') return;
+
     const handler = BackHandler.addEventListener('hardwareBackPress', () => {
-      if (isPreviewMode)      { closePreview();                return true; }
-      if (isStimpCalibrating) { setIsStimpCalibrating(false); return true; }
-      if (isPlacingHole)      { setIsPlacingHole(false);      return true; }
-      if (isCalibrating)      { cancelCalibration();           return true; }
+      if (state.guess.showResults) {
+        dispatch({ type: 'CLOSE_GUESS_RESULTS' });
+        return true;
+      }
+
+      if (state.guess.showOverlay) {
+        dispatch({ type: 'CANCEL_TRAINING_GUESS' });
+        return true;
+      }
+
+      if (state.ui.isPreviewMode) {
+        closePreview();
+        return true;
+      }
+
+      if (state.ui.isStimpCalibrating) {
+        dispatch({ type: 'CLOSE_STIMP_CALIBRATION' });
+        return true;
+      }
+
+      if (holePlacementActive || holeNeedsConfirm) {
+        dispatch({ type: 'CANCEL_HOLE_PLACEMENT' });
+        return true;
+      }
+
+      if (state.calibration.isOpen) {
+        dispatch({ type: 'CANCEL_CALIBRATION' });
+        return true;
+      }
+
       return false;
     });
+
     return () => handler.remove();
-  }, [isCalibrating, isPlacingHole, isStimpCalibrating, isPreviewMode, cancelCalibration, closePreview]);
+  }, [
+    closePreview,
+    dispatch,
+    holeNeedsConfirm,
+    holePlacementActive,
+    state.calibration.isOpen,
+    state.guess.showOverlay,
+    state.guess.showResults,
+    state.ui.isPreviewMode,
+    state.ui.isStimpCalibrating,
+  ]);
 
-  // ── Hole placement ────────────────────────────────────────────────────────
+  const setHole = useCallback(() => {
+    dispatch({ type: 'START_HOLE_PLACEMENT' });
+  }, [dispatch]);
+
+  const cancelHolePlacement = useCallback(() => {
+    dispatch({ type: 'CANCEL_HOLE_PLACEMENT' });
+  }, [dispatch]);
+
   const handleScreenTap = useCallback((event) => {
-    if (!isPlacingHole) return;
-    const { locationX, locationY } = event.nativeEvent;
-    setHolePos({ x: locationX, y: locationY });
-    setIsUserPlaced(true);
-    setIsPlacingHole(false);
-    setDistance(estimateDistanceFromScreen(locationY / height, betaRef.current));
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-  }, [isPlacingHole, height]);
+    if (!holePlacementActive) return;
 
-  const handleFindHole = useCallback(async () => {
-    if (!cameraRef.current) { setIsPlacingHole(true); return; }
-    setIsScanning(true);
-    setModePill('SCAN');
+    const { locationX, locationY } = event.nativeEvent;
+    const estimatedDistanceFt = estimateDistanceFromScreen(locationY / height, betaRef.current);
+
+    dispatch({
+      type: 'SET_MANUAL_HOLE',
+      position: { x: locationX, y: locationY },
+      estimatedDistanceFt,
+    });
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+  }, [dispatch, height, holePlacementActive]);
+
+  const handleAutoDetectHole = useCallback(async () => {
+    if (!cameraRef.current || !holePlacementActive) return;
+
+    dispatch({ type: 'START_HOLE_SCAN' });
+
     try {
       const photo = await cameraRef.current.takePictureAsync({
-        quality: 0.15, skipProcessing: true, shutterSound: false,
+        quality: 0.15,
+        skipProcessing: true,
+        shutterSound: false,
       });
-      const pos = await detectHoleInPhoto(photo.uri, width, height);
-      if (pos) {
-        setHolePos(pos);
-        setIsUserPlaced(true);
-        setDistance(estimateDistanceFromScreen(pos.y / height, betaRef.current));
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      } else {
-        setIsPlacingHole(true);
+      const position = await detectHoleInPhoto(photo.uri, width, height);
+
+      if (!position) {
+        dispatch({ type: 'HOLE_SCAN_FAILED' });
+        return;
       }
-    } catch (err) {
-      console.warn('[MainScreen] auto-detect error:', err?.message);
-      setIsPlacingHole(true);
-    } finally {
-      setIsScanning(false);
-      setModePill('READ');
+
+      const estimatedDistanceFt = estimateDistanceFromScreen(position.y / height, betaRef.current);
+      dispatch({ type: 'SET_AUTO_DETECTED_HOLE', position, estimatedDistanceFt });
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (error) {
+      console.warn('[MainScreen] auto-detect error:', error?.message);
+      dispatch({ type: 'HOLE_SCAN_FAILED' });
     }
-  }, [width, height]);
+  }, [dispatch, height, holePlacementActive, width]);
 
-  const handleResetHole = useCallback(() => {
-    setHolePos(null);
-    setIsUserPlaced(false);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-  }, []);
+  const handleUseDetectedHole = useCallback(() => {
+    dispatch({ type: 'CONFIRM_AUTO_HOLE' });
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  }, [dispatch]);
 
-  // ── Pill label ────────────────────────────────────────────────────────────
-  const pillLabel =
-    modePill === 'CAL'  ? 'CALIBRATING' :
-    modePill === 'SCAN' ? 'SCANNING...' :
-    isPlacingHole       ? 'PLACE HOLE'  :
-    isPreviewMode       ? 'PREVIEW'     : 'READ MODE';
+  const handleAdjustDetectedHole = useCallback(() => {
+    dispatch({ type: 'ADJUST_AUTO_HOLE' });
+  }, [dispatch]);
 
-  const pillStyle =
-    modePill === 'CAL'  ? styles.pillCal  :
-    modePill === 'SCAN' ? styles.pillScan :
-    isPlacingHole       ? styles.pillHole :
-    isPreviewMode       ? styles.pillAnim : styles.pillRead;
+  const openStimpCalibration = useCallback(() => {
+    dispatch({ type: 'OPEN_STIMP_CALIBRATION' });
+  }, [dispatch]);
+
+  const handleStimpResult = useCallback((greenSpeed) => {
+    dispatch({ type: 'APPLY_STIMP_RESULT', greenSpeed });
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  }, [dispatch]);
+
+  const openTrainingGuess = useCallback(() => {
+    dispatch({ type: 'OPEN_TRAINING_GUESS' });
+  }, [dispatch]);
+
+  const handleGuessSubmit = useCallback((guess) => {
+    dispatch({ type: 'SUBMIT_TRAINING_GUESS', guess });
+  }, [dispatch]);
+
+  const handleGuessSkip = useCallback(() => {
+    dispatch({ type: 'SKIP_TRAINING_GUESS' });
+  }, [dispatch]);
+
+  const pillLabel = state.calibration.isOpen
+    ? 'CALIBRATING'
+    : state.ui.isScanning
+      ? 'SCANNING...'
+      : holePlacementActive || holeNeedsConfirm
+        ? 'SET HOLE'
+        : state.ui.isPreviewMode
+          ? 'PREVIEW'
+          : 'READ MODE';
+
+  const pillStyle = state.calibration.isOpen
+    ? styles.pillCal
+    : state.ui.isScanning
+      ? styles.pillScan
+      : holePlacementActive || holeNeedsConfirm
+        ? styles.pillHole
+        : state.ui.isPreviewMode
+          ? styles.pillAnim
+          : styles.pillRead;
 
   return (
     <View style={styles.container}>
-      {/* Main content area — takes all space above the ad */}
       <View style={styles.content}>
-      {/* Camera */}
-      <CameraView ref={cameraRef} style={StyleSheet.absoluteFill} facing="back" />
+        <CameraView ref={cameraRef} style={StyleSheet.absoluteFill} facing="back" />
 
-      {/* Tap layer — active only when placing hole */}
-      <Pressable
-        style={StyleSheet.absoluteFill}
-        onPress={isPlacingHole ? handleScreenTap : undefined}
-        pointerEvents={isPlacingHole ? 'auto' : 'none'}
-      >
-        {/* AR Overlay (non-interactive) */}
-        <View style={StyleSheet.absoluteFill} pointerEvents="none">
-          <PuttingOverlay
-            width={width}
-            height={height}
-            slopeX={slopeX}
-            slopeY={slopeY}
-            distance={distance}
-            hasSlope={hasSlope}
-            holePos={holePos}
-            isUserPlacedHole={isUserPlacedHole}
-            isPlacingHole={isPlacingHole}
-            greenSpeed={greenSpeed}
-            slopeReadings={slopeReadings}
-            animT={animT}
-          />
-        </View>
-      </Pressable>
-
-      {/* Top bar */}
-      <View style={styles.topBar} pointerEvents="none">
-        <Text style={styles.logo}>GreenReader</Text>
-        <View style={[styles.pill, pillStyle]}>
-          <Text style={styles.pillText}>{pillLabel}</Text>
-        </View>
-      </View>
-
-      {/* Cancel button shown while placing hole */}
-      {isPlacingHole && (
-        <TouchableOpacity
-          style={styles.cancelHoleBtn}
-          onPress={() => setIsPlacingHole(false)}
-          activeOpacity={0.8}
+        <Pressable
+          style={StyleSheet.absoluteFill}
+          onPress={holePlacementActive ? handleScreenTap : undefined}
+          pointerEvents={holePlacementActive ? 'auto' : 'none'}
         >
-          <Text style={styles.cancelHoleTxt}>Cancel</Text>
-        </TouchableOpacity>
-      )}
+          <View style={StyleSheet.absoluteFill} pointerEvents="none">
+            <PuttingOverlay
+              width={width}
+              height={height}
+              slopeX={state.slope.slopeX}
+              slopeY={state.slope.slopeY}
+              distance={state.settings.distance}
+              hasSlope={state.slope.hasSlope}
+              hole={state.hole}
+              greenSpeed={state.settings.greenSpeed}
+              slopeReadings={state.slope.readings}
+              animT={animT}
+              grainDir={state.settings.grainDir}
+              readQuality={readQuality}
+            />
+          </View>
+        </Pressable>
 
-      {/* Calibration overlay */}
-      {isCalibrating && (
-        <CalibrationOverlay
-          gamma={gamma}
-          beta={beta}
-          liveText={liveText}
-          onCapture={captureSlope}
-          onCancel={cancelCalibration}
-        />
-      )}
+        <View style={styles.topBar}>
+          <Text style={styles.logo}>GreenReader</Text>
+          <View style={styles.topRight}>
+            <View style={styles.practiceTag}>
+              <Text style={styles.practiceTagText}>Practice aid</Text>
+            </View>
+            <View style={[styles.pill, pillStyle]}>
+              <Text style={styles.pillText}>{pillLabel}</Text>
+            </View>
+          </View>
+        </View>
 
-      {/* Stimpmeter calibration overlay */}
-      {isStimpCalibrating && (
-        <StimpCalibration
-          onResult={handleStimpResult}
-          onCancel={() => setIsStimpCalibrating(false)}
-        />
-      )}
+        {(holePlacementActive || holeNeedsConfirm) && (
+          <View style={styles.holeCard}>
+            <Text style={styles.holeCardTitle}>
+              {holeNeedsConfirm ? 'Detected hole ready' : 'Set the hole'}
+            </Text>
+            <Text style={styles.holeCardDesc}>
+              {holeNeedsConfirm
+                ? 'Use the detected hole, or adjust it manually.'
+                : 'Tap the hole on screen, or try auto-detect.'}
+            </Text>
+            <View style={styles.holeBtnRow}>
+              {holeNeedsConfirm ? (
+                <>
+                  <TouchableOpacity style={[styles.holeBtn, styles.holeBtnPrimary]} onPress={handleUseDetectedHole} activeOpacity={0.8}>
+                    <Text style={styles.holeBtnPrimaryText}>Use Detected</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={[styles.holeBtn, styles.holeBtnSecondary]} onPress={handleAdjustDetectedHole} activeOpacity={0.8}>
+                    <Text style={styles.holeBtnSecondaryText}>Adjust</Text>
+                  </TouchableOpacity>
+                </>
+              ) : (
+                <>
+                  <TouchableOpacity
+                    style={[styles.holeBtn, styles.holeBtnPrimary, state.ui.isScanning && styles.btnDisabled]}
+                    onPress={handleAutoDetectHole}
+                    activeOpacity={0.8}
+                    disabled={state.ui.isScanning}
+                  >
+                    <Text style={styles.holeBtnPrimaryText}>{state.ui.isScanning ? 'Scanning...' : 'Auto Detect'}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={[styles.holeBtn, styles.holeBtnSecondary]} onPress={cancelHolePlacement} activeOpacity={0.8}>
+                    <Text style={styles.holeBtnSecondaryText}>Cancel</Text>
+                  </TouchableOpacity>
+                </>
+              )}
+            </View>
+            {holeNeedsConfirm && (
+              <TouchableOpacity style={styles.holeCancelLink} onPress={cancelHolePlacement} activeOpacity={0.7}>
+                <Text style={styles.holeCancelText}>Cancel</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
 
-      {/* Preview metrics overlay (simplified full-screen view) */}
-      {isPreviewMode && hasSlope && (
-        <PreviewMetrics
-          slopeX={slopeX}
-          slopeY={slopeY}
-          distance={distance}
-          greenSpeed={greenSpeed}
-          slopeReadings={slopeReadings}
-          onClose={closePreview}
-        />
-      )}
+        {state.calibration.isOpen && (
+          <CalibrationOverlay
+            mode={state.calibration.mode}
+            gamma={gamma}
+            beta={beta}
+            liveText={liveText}
+            onCapture={captureSlope}
+            onCancel={cancelCalibration}
+          />
+        )}
 
-      {/* Bottom panel */}
-      {!isPlacingHole && !isPreviewMode && (
-        <BottomPanel
-          distance={distance}
-          onDistanceChange={setDistance}
-          slopeX={slopeX}
-          slopeY={slopeY}
-          hasSlope={hasSlope}
-          onReadSlope={openCalibration}
-          onReset={resetSlope}
-          onFindHole={handleFindHole}
-          onResetHole={handleResetHole}
-          isScanning={isScanning}
-          isUserPlacedHole={isUserPlacedHole}
-          greenSpeed={greenSpeed}
-          onGreenSpeedChange={setGreenSpeed}
-          onStimpCalibrate={openStimpCalibration}
-          onPreview={startPreview}
-          isAnimating={isAnimating}
-          slopeReadings={slopeReadings}
-        />
-      )}
+        {state.ui.isStimpCalibrating && (
+          <StimpCalibration
+            onResult={handleStimpResult}
+            onCancel={() => dispatch({ type: 'CLOSE_STIMP_CALIBRATION' })}
+          />
+        )}
+
+        {state.guess.showOverlay && (
+          <GuessOverlay
+            puttDistance={state.settings.distance}
+            onSubmit={handleGuessSubmit}
+            onSkip={handleGuessSkip}
+          />
+        )}
+
+        {state.guess.showResults && state.guess.pending && state.guess.actual && (
+          <GuessResults
+            guess={state.guess.pending}
+            actual={state.guess.actual}
+            onClose={() => dispatch({ type: 'CLOSE_GUESS_RESULTS' })}
+          />
+        )}
+
+        {state.ui.isPreviewMode && previewReady && (
+          <PreviewMetrics
+            slope={state.slope}
+            settings={state.settings}
+            hole={state.hole}
+            readQuality={readQuality}
+            onClose={closePreview}
+          />
+        )}
+
+        {!state.ui.isPreviewMode && !holePlacementActive && !holeNeedsConfirm && (
+          <BottomPanel
+            slope={state.slope}
+            hole={state.hole}
+            settings={state.settings}
+            ui={state.ui}
+            readQuality={readQuality}
+            onDistanceChange={(distance) => dispatch({ type: 'SET_DISTANCE', distance })}
+            onReadSlope={openQuickCalibration}
+            onAdvancedRead={openAdvancedCalibration}
+            onSetHole={setHole}
+            onPreview={startPreview}
+            onReset={resetSession}
+            onToggleAdvanced={() => dispatch({ type: 'TOGGLE_ADVANCED' })}
+            onGreenSpeedChange={(greenSpeed) => dispatch({ type: 'SET_GREEN_SPEED', greenSpeed })}
+            onStimpCalibrate={openStimpCalibration}
+            onGrainChange={(grainDir) => dispatch({ type: 'SET_GRAIN_DIR', grainDir })}
+            onTrainingRead={openTrainingGuess}
+            onDefaultReadModeChange={(defaultReadMode) => dispatch({ type: 'SET_DEFAULT_READ_MODE', defaultReadMode })}
+          />
+        )}
       </View>
 
-      {/* Ad banner — always at very bottom */}
       <AdBanner />
     </View>
   );
@@ -337,7 +446,9 @@ const styles = StyleSheet.create({
   content: { flex: 1 },
   topBar: {
     position: 'absolute',
-    top: 0, left: 0, right: 0,
+    top: 0,
+    left: 0,
+    right: 0,
     paddingTop: Platform.OS === 'ios' ? 54 : ANDROID_STATUS_BAR + 10,
     paddingHorizontal: 16,
     paddingBottom: 12,
@@ -347,23 +458,95 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.35)',
   },
   logo: { fontSize: 18, fontWeight: '800', color: '#4caf50', letterSpacing: 0.5 },
+  topRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  practiceTag: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.16)',
+  },
+  practiceTagText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#90a4ae',
+  },
   pill: { paddingHorizontal: 12, paddingVertical: 4, borderRadius: 20 },
   pillRead: { backgroundColor: '#4caf50' },
-  pillCal:  { backgroundColor: '#ff9800' },
+  pillCal: { backgroundColor: '#ff9800' },
   pillScan: { backgroundColor: '#2196f3' },
   pillHole: { backgroundColor: '#ffeb3b' },
   pillAnim: { backgroundColor: '#7b1fa2' },
-  pillText: { fontSize: 11, fontWeight: '700', color: '#000', letterSpacing: 1.2, textTransform: 'uppercase' },
-  cancelHoleBtn: {
-    position: 'absolute',
-    bottom: 48,
-    alignSelf: 'center',
-    backgroundColor: 'rgba(0,0,0,0.75)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.25)',
-    borderRadius: 24,
-    paddingVertical: 14,
-    paddingHorizontal: 40,
+  pillText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#000',
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
   },
-  cancelHoleTxt: { color: '#fff', fontWeight: '700', fontSize: 15 },
+  holeCard: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    bottom: 82,
+    backgroundColor: 'rgba(0,0,0,0.82)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.14)',
+    borderRadius: 18,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+  },
+  holeCardTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#ffffff',
+    marginBottom: 4,
+  },
+  holeCardDesc: {
+    fontSize: 13,
+    lineHeight: 19,
+    color: '#b0bec5',
+    marginBottom: 12,
+  },
+  holeBtnRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  holeBtn: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 14,
+    paddingVertical: 13,
+  },
+  holeBtnPrimary: {
+    backgroundColor: '#1565c0',
+  },
+  holeBtnPrimaryText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  holeBtnSecondary: {
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.16)',
+  },
+  holeBtnSecondaryText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  holeCancelLink: {
+    alignSelf: 'center',
+    paddingVertical: 8,
+    marginTop: 8,
+  },
+  holeCancelText: {
+    color: '#90a4ae',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  btnDisabled: { opacity: 0.45 },
 });
