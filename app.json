@@ -21,7 +21,7 @@
     },
     "android": {
       "package": "com.greenreader.app",
-      "versionCode": 1,
+      "versionCode": 4,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0a1a0a"

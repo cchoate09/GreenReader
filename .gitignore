@@ -1,6 +1,9 @@
 node_modules/
 .npm-cache/
+.expo-home/
+.gradle-home*/
 .expo/
+.idea/
 dist/
 *.jks
 *.p8
@@ -9,6 +12,7 @@ dist/
 *.mobileprovision
 *.orig.*
 web-build/
+android/keystore.properties
 
 # Google Play service account credentials
 google-play-key.json
