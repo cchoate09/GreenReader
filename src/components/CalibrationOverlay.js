@@ -18,29 +18,18 @@ const STEPS = [
   { label: 'Near the hole', pos: 1.0 },
 ];
 
-/**
- * Calibration overlay for quick single reads and advanced compound reads.
- *
- * Props:
- *   mode         – 'single' | 'compound'
- *   gamma, beta  – live tilt degrees
- *   liveText     – live slope string
- *   onCapture    – receives array [{ slopeX, slopeY, pos, stabilityScore, gammaStd, betaStd, sampleCount }, ...]
- *   onCancel     – close overlay
- */
 export default function CalibrationOverlay({ mode, gamma, beta, liveText, onCapture, onCancel }) {
   const bubbleX = useRef(new Animated.Value(HALF)).current;
   const bubbleY = useRef(new Animated.Value(HALF)).current;
 
-  // Rolling average buffer — smooths sensor noise over ~1 second (10 samples at 100ms)
+  // Rolling average buffer smooths about one second of sensor noise.
   const BUFFER_SIZE = 10;
   const gammaBuffer = useRef([]);
-  const betaBuffer  = useRef([]);
+  const betaBuffer = useRef([]);
 
-  // Multi-step state
   const [readings, setReadings] = useState([]);
-  const [step, setStep] = useState(0);         // which step is next to capture
-  const [overlayMode, setOverlayMode] = useState('capturing'); // 'capturing' | 'between'
+  const [step, setStep] = useState(0);
+  const [overlayMode, setOverlayMode] = useState('capturing');
   const isSingleRead = mode === 'single';
 
   const stdDev = useCallback((values) => {
@@ -63,27 +52,25 @@ export default function CalibrationOverlay({ mode, gamma, beta, liveText, onCapt
   }, [mode, clearBuffers]);
 
   useEffect(() => {
-    // Push to rolling buffer
     gammaBuffer.current.push(gamma);
     betaBuffer.current.push(beta);
     if (gammaBuffer.current.length > BUFFER_SIZE) gammaBuffer.current.shift();
-    if (betaBuffer.current.length > BUFFER_SIZE)  betaBuffer.current.shift();
+    if (betaBuffer.current.length > BUFFER_SIZE) betaBuffer.current.shift();
 
-    const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
-    const maxTravel = HALF - BUBBLE_SIZE / 2 - 4;
-    const nx = HALF + clamp((gamma / MAX_TILT_DEG) * maxTravel, -maxTravel, maxTravel);
-    const ny = HALF + clamp((beta  / MAX_TILT_DEG) * maxTravel, -maxTravel, maxTravel);
+    const clamp = (value, low, high) => Math.max(low, Math.min(high, value));
+    const maxTravel = HALF - (BUBBLE_SIZE / 2) - 4;
+    const nextX = HALF + clamp((gamma / MAX_TILT_DEG) * maxTravel, -maxTravel, maxTravel);
+    const nextY = HALF + clamp((beta / MAX_TILT_DEG) * maxTravel, -maxTravel, maxTravel);
     Animated.parallel([
-      Animated.spring(bubbleX, { toValue: nx, useNativeDriver: false, speed: 20, bounciness: 0 }),
-      Animated.spring(bubbleY, { toValue: ny, useNativeDriver: false, speed: 20, bounciness: 0 }),
+      Animated.spring(bubbleX, { toValue: nextX, useNativeDriver: false, speed: 20, bounciness: 0 }),
+      Animated.spring(bubbleY, { toValue: nextY, useNativeDriver: false, speed: 20, bounciness: 0 }),
     ]).start();
-  }, [gamma, beta]);
+  }, [beta, bubbleX, bubbleY, gamma]);
 
   const capture = useCallback(() => {
-    // Use averaged sensor values to filter noise
-    const avg = (arr) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
-    const smoothGamma = avg(gammaBuffer.current);
-    const smoothBeta  = avg(betaBuffer.current);
+    const average = (values) => (values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0);
+    const smoothGamma = average(gammaBuffer.current);
+    const smoothBeta = average(betaBuffer.current);
     const gammaStd = stdDev(gammaBuffer.current);
     const betaStd = stdDev(betaBuffer.current);
     const stabilityScore = Math.max(0, Math.min(100, Math.round(100 - ((gammaStd + betaStd) * 60))));
@@ -97,18 +84,17 @@ export default function CalibrationOverlay({ mode, gamma, beta, liveText, onCapt
       betaStd,
       sampleCount,
     };
-    const newReadings = [...readings, nextReading];
+    const nextReadings = [...readings, nextReading];
 
     if (isSingleRead) {
       onCapture([nextReading]);
       return;
     }
 
-    setReadings(newReadings);
+    setReadings(nextReadings);
 
     if (step >= 2) {
-      // Final step — auto-finish
-      onCapture(newReadings);
+      onCapture(nextReadings);
     } else {
       setOverlayMode('between');
     }
@@ -116,7 +102,7 @@ export default function CalibrationOverlay({ mode, gamma, beta, liveText, onCapt
 
   const nextPoint = useCallback(() => {
     clearBuffers();
-    setStep((s) => s + 1);
+    setStep((currentStep) => currentStep + 1);
     setOverlayMode('capturing');
   }, [clearBuffers]);
 
@@ -131,16 +117,21 @@ export default function CalibrationOverlay({ mode, gamma, beta, liveText, onCapt
 
   return (
     <View style={styles.overlay}>
-      {/* Step indicator */}
       <View style={styles.stepRow}>
-        {visibleSteps.map((s, i) => (
-          <View key={i} style={[styles.stepDot, i < readingCount && styles.stepDotDone, i === step && isCapturing && styles.stepDotActive]} />
+        {visibleSteps.map((currentStep, index) => (
+          <View
+            key={currentStep.label}
+            style={[
+              styles.stepDot,
+              index < readingCount && styles.stepDotDone,
+              index === step && isCapturing && styles.stepDotActive,
+            ]}
+          />
         ))}
       </View>
 
       {isCapturing && (
         <>
-          {/* Bubble level */}
           <View style={styles.levelContainer}>
             <View style={styles.crossH} />
             <View style={styles.crossV} />
@@ -150,7 +141,7 @@ export default function CalibrationOverlay({ mode, gamma, beta, liveText, onCapt
                 styles.bubble,
                 {
                   left: Animated.subtract(bubbleX, BUBBLE_SIZE / 2),
-                  top:  Animated.subtract(bubbleY, BUBBLE_SIZE / 2),
+                  top: Animated.subtract(bubbleY, BUBBLE_SIZE / 2),
                 },
               ]}
             />
@@ -167,8 +158,8 @@ export default function CalibrationOverlay({ mode, gamma, beta, liveText, onCapt
             {isSingleRead
               ? 'Lay your phone flat by the ball with the top edge pointed at the hole.'
               : readingCount === 0
-                ? 'Lay phone flat (face up) on the green near your ball, top edge toward the hole.'
-                : `Lay phone flat ${stepInfo.label.toLowerCase()}, top edge toward hole.`}
+                ? 'Lay the phone flat on the green near your ball with the top edge pointed at the hole.'
+                : `Lay the phone flat ${stepInfo.label.toLowerCase()} with the top edge pointed at the hole.`}
           </Text>
           <Text style={styles.liveText}>{liveText || 'Waiting for motion data...'}</Text>
 
@@ -187,7 +178,7 @@ export default function CalibrationOverlay({ mode, gamma, beta, liveText, onCapt
         <>
           <Text style={styles.title}>Reading {readingCount} Captured</Text>
           <Text style={styles.capturedInfo}>
-            {readings.map((r, i) => `${STEPS[i].label}: ${Math.sqrt(r.slopeX ** 2 + r.slopeY ** 2).toFixed(1)}\u00B0`).join('\n')}
+            {readings.map((reading, index) => `${STEPS[index].label}: ${Math.sqrt((reading.slopeX ** 2) + (reading.slopeY ** 2)).toFixed(1)} deg`).join('\n')}
           </Text>
           <Text style={styles.desc}>
             Add another reading for a more accurate compound read, or tap Done.
@@ -224,48 +215,85 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   stepDot: {
-    width: 10, height: 10, borderRadius: 5,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
     backgroundColor: 'rgba(255,255,255,0.15)',
   },
   stepDotDone: { backgroundColor: '#4caf50' },
   stepDotActive: { backgroundColor: '#ff9800', transform: [{ scale: 1.3 }] },
   levelContainer: {
-    width: LEVEL_SIZE, height: LEVEL_SIZE,
+    width: LEVEL_SIZE,
+    height: LEVEL_SIZE,
     borderRadius: LEVEL_SIZE / 2,
-    borderWidth: 2, borderColor: 'rgba(255,152,0,0.55)',
+    borderWidth: 2,
+    borderColor: 'rgba(255,152,0,0.55)',
     backgroundColor: 'rgba(255,152,0,0.06)',
-    marginBottom: 24, overflow: 'hidden', position: 'relative',
+    marginBottom: 24,
+    overflow: 'hidden',
+    position: 'relative',
   },
   crossH: {
-    position: 'absolute', left: 0, right: 0, top: HALF - 0.5,
-    height: 1, backgroundColor: 'rgba(255,255,255,0.15)',
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: HALF - 0.5,
+    height: 1,
+    backgroundColor: 'rgba(255,255,255,0.15)',
   },
   crossV: {
-    position: 'absolute', top: 0, bottom: 0, left: HALF - 0.5,
-    width: 1, backgroundColor: 'rgba(255,255,255,0.15)',
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: HALF - 0.5,
+    width: 1,
+    backgroundColor: 'rgba(255,255,255,0.15)',
   },
   targetRing: {
-    position: 'absolute', width: 22, height: 22, borderRadius: 11,
-    borderWidth: 2, borderColor: 'rgba(255,255,255,0.3)',
-    left: HALF - 11, top: HALF - 11,
+    position: 'absolute',
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.3)',
+    left: HALF - 11,
+    top: HALF - 11,
   },
   bubble: {
-    position: 'absolute', width: BUBBLE_SIZE, height: BUBBLE_SIZE,
-    borderRadius: BUBBLE_SIZE / 2, backgroundColor: '#ff9800',
-    shadowColor: '#ff9800', shadowOpacity: 0.8, shadowRadius: 8, elevation: 6,
+    position: 'absolute',
+    width: BUBBLE_SIZE,
+    height: BUBBLE_SIZE,
+    borderRadius: BUBBLE_SIZE / 2,
+    backgroundColor: '#ff9800',
+    shadowColor: '#ff9800',
+    shadowOpacity: 0.8,
+    shadowRadius: 8,
+    elevation: 6,
   },
   title: { fontSize: 22, fontWeight: '800', color: '#ff9800', marginBottom: 8 },
   desc: {
-    fontSize: 14, color: '#9e9e9e', lineHeight: 21, textAlign: 'center',
-    maxWidth: 280, marginBottom: 6,
+    fontSize: 14,
+    color: '#9e9e9e',
+    lineHeight: 21,
+    textAlign: 'center',
+    maxWidth: 280,
+    marginBottom: 6,
   },
   capturedInfo: {
-    fontSize: 13, color: '#4caf50', fontWeight: '600',
-    textAlign: 'center', lineHeight: 22, marginBottom: 12,
+    fontSize: 13,
+    color: '#4caf50',
+    fontWeight: '600',
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 12,
   },
   liveText: {
-    fontSize: 13, color: '#ff9800', fontWeight: '600',
-    minHeight: 20, marginBottom: 28, textAlign: 'center',
+    fontSize: 13,
+    color: '#ff9800',
+    fontWeight: '600',
+    minHeight: 20,
+    marginBottom: 28,
+    textAlign: 'center',
   },
   btnRow: { flexDirection: 'row', gap: 12, width: '100%', maxWidth: 300 },
   btn: { flex: 1, paddingVertical: 14, borderRadius: 14, alignItems: 'center' },
@@ -273,7 +301,8 @@ const styles = StyleSheet.create({
   btnPrimaryText: { color: '#000', fontWeight: '700', fontSize: 14 },
   btnOutline: {
     backgroundColor: 'rgba(255,255,255,0.08)',
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
   },
   btnOutlineText: { color: '#fff', fontWeight: '600', fontSize: 14 },
 });

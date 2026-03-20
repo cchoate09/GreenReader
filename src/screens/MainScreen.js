@@ -30,6 +30,10 @@ const ANDROID_STATUS_BAR = Platform.OS === 'android' ? (StatusBar.currentHeight 
 
 export default function MainScreen() {
   const { width, height } = useWindowDimensions();
+  const compactLayout = width < 390;
+  const holeCardBottom = Platform.OS === 'android'
+    ? (compactLayout ? 96 : 88)
+    : 82;
   const cameraRef = useRef(null);
   const animFrameRef = useRef(null);
   const betaRef = useRef(0);
@@ -314,8 +318,8 @@ export default function MainScreen() {
         </Pressable>
 
         <View style={styles.topBar}>
-          <Text style={styles.logo}>GreenReader</Text>
-          <View style={styles.topRight}>
+          <Text style={[styles.logo, compactLayout && styles.logoCompact]}>GreenReader</Text>
+          <View style={[styles.topRight, compactLayout && styles.topRightCompact]}>
             <View style={styles.practiceTag}>
               <Text style={styles.practiceTagText}>Practice aid</Text>
             </View>
@@ -326,7 +330,7 @@ export default function MainScreen() {
         </View>
 
         {(holePlacementActive || holeNeedsConfirm) && (
-          <View style={styles.holeCard}>
+          <View style={[styles.holeCard, compactLayout && styles.holeCardCompact, { bottom: holeCardBottom }]}>
             <Text style={styles.holeCardTitle}>
               {holeNeedsConfirm ? 'Detected hole ready' : 'Set the hole'}
             </Text>
@@ -458,7 +462,15 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.35)',
   },
   logo: { fontSize: 18, fontWeight: '800', color: '#4caf50', letterSpacing: 0.5 },
+  logoCompact: {
+    fontSize: 16,
+  },
   topRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  topRightCompact: {
+    flexWrap: 'wrap',
+    justifyContent: 'flex-end',
+    maxWidth: '62%',
+  },
   practiceTag: {
     paddingHorizontal: 10,
     paddingVertical: 4,
@@ -489,13 +501,18 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 16,
     right: 16,
-    bottom: 82,
     backgroundColor: 'rgba(0,0,0,0.82)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.14)',
     borderRadius: 18,
     paddingVertical: 14,
     paddingHorizontal: 14,
+  },
+  holeCardCompact: {
+    left: 12,
+    right: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
   },
   holeCardTitle: {
     fontSize: 18,
