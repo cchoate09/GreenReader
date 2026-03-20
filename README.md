@@ -83,15 +83,23 @@ eas submit --platform ios --profile production
 Requires a Google Play Developer account.
 
 ```bash
-eas build --platform android --profile production
+npm run release:check
+npm run release:android:bundle
 eas submit --platform android --profile production
 ```
+
+Local submit credentials should live at `.secrets/google-play-key.json`, which is ignored by git.
 
 ### Preview APK
 
 ```bash
 eas build --platform android --profile preview
 ```
+
+### Release Notes
+
+- Android production signing expects your local upload key and `android/keystore.properties`.
+- iOS release values are intentionally not checked in yet; add real App Store Connect and AdMob iOS values when you are ready to ship iOS.
 
 ---
 
