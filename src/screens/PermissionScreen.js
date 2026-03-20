@@ -6,26 +6,30 @@ import {
   TouchableOpacity,
   Platform,
   ScrollView,
+  StatusBar,
 } from 'react-native';
 
+const ANDROID_STATUS_BAR = Platform.OS === 'android' ? (StatusBar.currentHeight ?? 0) : 0;
+
 const HOW_TO = [
-  'Tap Enable to grant camera & motion access.',
+  'Tap Enable to grant camera and motion access.',
   'Tap Read Slope and lay the phone flat near your ball.',
   'Tap Set Hole and stand at the ball to place the cup.',
   'Use Aim and Play As as a practice read, then confirm with your eyes.',
   'Open Advanced only when you want grain, speed testing, or training mode.',
 ];
 
-/**
- * Initial permission / welcome screen.
- * Props:
- *   onEnable – called when user taps Enable
- */
 export default function PermissionScreen({ onEnable }) {
   return (
     <View style={styles.container}>
-      <ScrollView contentContainerStyle={styles.content} bounces={false}>
-        <Text style={styles.icon}>⛳</Text>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        bounces={false}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.badge}>
+          <Text style={styles.badgeText}>GR</Text>
+        </View>
         <Text style={styles.title}>GreenReader</Text>
         <Text style={styles.subtitle}>
           Practice green-reading aid with quick AR aim and pace guidance powered by your phone sensors.
@@ -33,10 +37,10 @@ export default function PermissionScreen({ onEnable }) {
 
         <View style={styles.howTo}>
           <Text style={styles.howToTitle}>HOW IT WORKS</Text>
-          {HOW_TO.map((step, i) => (
-            <View key={i} style={styles.stepRow}>
+          {HOW_TO.map((step, index) => (
+            <View key={step} style={styles.stepRow}>
               <View style={styles.stepNumContainer}>
-                <Text style={styles.stepNum}>{i + 1}</Text>
+                <Text style={styles.stepNum}>{index + 1}</Text>
               </View>
               <Text style={styles.stepText}>{step}</Text>
             </View>
@@ -50,7 +54,7 @@ export default function PermissionScreen({ onEnable }) {
         </View>
 
         <TouchableOpacity style={styles.enableBtn} onPress={onEnable} activeOpacity={0.8}>
-          <Text style={styles.enableText}>Enable Camera &amp; Sensors</Text>
+          <Text style={styles.enableText}>Enable Camera and Sensors</Text>
         </TouchableOpacity>
       </ScrollView>
     </View>
@@ -64,13 +68,26 @@ const styles = StyleSheet.create({
   },
   content: {
     alignItems: 'center',
-    paddingTop: Platform.OS === 'ios' ? 80 : 48,
-    paddingBottom: 40,
-    paddingHorizontal: 28,
+    paddingTop: Platform.OS === 'ios' ? 80 : ANDROID_STATUS_BAR + 36,
+    paddingBottom: Platform.OS === 'android' ? 48 : 40,
+    paddingHorizontal: 24,
   },
-  icon: {
-    fontSize: 72,
-    marginBottom: 16,
+  badge: {
+    width: 74,
+    height: 74,
+    borderRadius: 22,
+    backgroundColor: 'rgba(76,175,80,0.16)',
+    borderWidth: 1,
+    borderColor: 'rgba(76,175,80,0.28)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 18,
+  },
+  badgeText: {
+    fontSize: 28,
+    fontWeight: '900',
+    color: '#4caf50',
+    letterSpacing: 0.5,
   },
   title: {
     fontSize: 32,
@@ -85,7 +102,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 22,
     marginBottom: 28,
-    maxWidth: 300,
+    maxWidth: 320,
   },
   howTo: {
     backgroundColor: 'rgba(76,175,80,0.07)',
@@ -94,7 +111,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 18,
     width: '100%',
-    maxWidth: 340,
+    maxWidth: 348,
     marginBottom: 16,
   },
   howToTitle: {
@@ -136,7 +153,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     padding: 12,
     width: '100%',
-    maxWidth: 340,
+    maxWidth: 348,
     marginBottom: 28,
   },
   noteText: {
@@ -151,7 +168,7 @@ const styles = StyleSheet.create({
     paddingVertical: 18,
     paddingHorizontal: 32,
     width: '100%',
-    maxWidth: 340,
+    maxWidth: 348,
     alignItems: 'center',
     shadowColor: '#4caf50',
     shadowOpacity: 0.4,

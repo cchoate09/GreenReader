@@ -7,6 +7,7 @@ import {
   Platform,
   Dimensions,
   useWindowDimensions,
+  ScrollView,
 } from 'react-native';
 import Slider from '@react-native-community/slider';
 import {
@@ -41,7 +42,13 @@ function qualityColor(level) {
   return '#90a4ae';
 }
 
-function holeSummary(hole) {
+function readStatusSummary({ hole, hasSlope }) {
+  if (hasSlope && hole.status === 'confirmed') {
+    return hole.source === 'manual'
+      ? 'Read ready. Manual hole confirmed.'
+      : 'Read ready. Auto-detected hole confirmed.';
+  }
+
   if (hole.status === 'confirmed') {
     return hole.source === 'manual' ? 'Manual hole locked' : 'Auto-detected hole locked';
   }
@@ -71,12 +78,17 @@ export default function BottomPanel({
   onDefaultReadModeChange,
 }) {
   const { width: screenW, height: windowH } = useWindowDimensions();
+  const compactLayout = screenW < 390;
+  const shortScreen = windowH < 780;
   const androidNavInset = Platform.OS === 'android'
     ? Math.max(0, Dimensions.get('screen').height - windowH)
     : 0;
   const panelBottomPadding = Platform.OS === 'ios'
     ? 34
     : Math.min(64, Math.max(32, androidNavInset + 20));
+  const panelMaxHeight = ui.advancedOpen
+    ? Math.min(windowH * 0.7, 560)
+    : Math.min(windowH * 0.5, 390);
   const outcome = getReadOutcome({
     hasSlope: slope.hasSlope,
     slopeX: slope.slopeX,
@@ -93,11 +105,17 @@ export default function BottomPanel({
   const playStr = outcome.playDist != null ? `${outcome.playDist} ft` : '--';
   const guidance = (readQuality.level === 'low' || readQuality.level === 'incomplete')
     ? getReadQualityGuidance(readQuality)
-    : holeSummary(hole);
+    : readStatusSummary({ hole, hasSlope: slope.hasSlope });
 
   return (
-    <View style={[styles.panel, { paddingBottom: panelBottomPadding }]}>
-      <View style={styles.distRow}>
+    <View style={styles.panel}>
+      <ScrollView
+        bounces={false}
+        style={{ maxHeight: panelMaxHeight }}
+        contentContainerStyle={[styles.panelContent, { paddingBottom: panelBottomPadding }]}
+        showsVerticalScrollIndicator={ui.advancedOpen || shortScreen}
+      >
+      <View style={[styles.distRow, compactLayout && styles.compactDistRow]}>
         <Text style={styles.distLabel}>Distance</Text>
         <Slider
           style={styles.slider}
@@ -113,10 +131,10 @@ export default function BottomPanel({
         <Text style={styles.distVal}>{settings.distance} ft</Text>
       </View>
 
-      <View style={[styles.qualityCard, { borderColor: qualityColor(readQuality.level) }]}>
+      <View style={[styles.qualityCard, compactLayout && styles.qualityCardCompact, { borderColor: qualityColor(readQuality.level) }]}>
         <View>
           <Text style={styles.qualityLabel}>Read Quality</Text>
-          <Text style={[styles.qualityValue, { color: qualityColor(readQuality.level) }]}>
+          <Text style={[styles.qualityValue, compactLayout && styles.qualityValueCompact, { color: qualityColor(readQuality.level) }]}>
             {readQuality.label}
             {readQuality.score ? ` ${readQuality.score}` : ''}
           </Text>
@@ -124,31 +142,31 @@ export default function BottomPanel({
         <Text style={styles.qualityHint}>{guidance}</Text>
       </View>
 
-      <View style={styles.statsRow}>
+      <View style={[styles.statsRow, compactLayout && styles.compactStatsRow]}>
         <StatCard label="Aim" value={aimStr} />
         <StatCard label="Play As" value={playStr} />
       </View>
 
-      <View style={styles.btnRow}>
-        <TouchableOpacity style={[styles.btn, styles.btnOutline]} onPress={onReadSlope} activeOpacity={0.7}>
-          <Text style={styles.btnOutlineText}>Read Slope</Text>
+      <View style={[styles.btnRow, compactLayout && styles.compactBtnRow]}>
+        <TouchableOpacity style={[styles.btn, compactLayout && styles.btnCompact, styles.btnOutline]} onPress={onReadSlope} activeOpacity={0.7}>
+          <Text style={[styles.btnOutlineText, compactLayout && styles.btnTextCompact]}>Read Slope</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={[styles.btn, styles.btnHole]} onPress={onSetHole} activeOpacity={0.7}>
-          <Text style={styles.btnHoleText}>Set Hole</Text>
+        <TouchableOpacity style={[styles.btn, compactLayout && styles.btnCompact, styles.btnHole]} onPress={onSetHole} activeOpacity={0.7}>
+          <Text style={[styles.btnHoleText, compactLayout && styles.btnTextCompact]}>Set Hole</Text>
         </TouchableOpacity>
       </View>
 
-      <View style={styles.btnRow}>
+      <View style={[styles.btnRow, compactLayout && styles.compactBtnRow]}>
         <TouchableOpacity
-          style={[styles.btn, styles.btnPreview, !previewReady && styles.btnDisabled]}
+          style={[styles.btn, compactLayout && styles.btnCompact, styles.btnPreview, !previewReady && styles.btnDisabled]}
           onPress={onPreview}
           activeOpacity={0.7}
           disabled={!previewReady}
         >
-          <Text style={styles.btnPreviewText}>Preview</Text>
+          <Text style={[styles.btnPreviewText, compactLayout && styles.btnTextCompact]}>Preview</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={[styles.btn, styles.btnPrimary]} onPress={onReset} activeOpacity={0.7}>
-          <Text style={styles.btnPrimaryText}>Reset Read</Text>
+        <TouchableOpacity style={[styles.btn, compactLayout && styles.btnCompact, styles.btnPrimary]} onPress={onReset} activeOpacity={0.7}>
+          <Text style={[styles.btnPrimaryText, compactLayout && styles.btnTextCompact]}>Reset Read</Text>
         </TouchableOpacity>
       </View>
 
@@ -160,12 +178,13 @@ export default function BottomPanel({
         <View style={styles.advancedSection}>
           <Text style={styles.advancedTitle}>Advanced Settings</Text>
 
-          <View style={styles.settingRow}>
-            <Text style={styles.settingLabel}>Default Mode</Text>
-            <View style={styles.settingButtons}>
+          <View style={[styles.settingRow, compactLayout && styles.settingRowCompact]}>
+            <Text style={[styles.settingLabel, compactLayout && styles.settingLabelCompact]}>Default Mode</Text>
+            <View style={[styles.settingButtons, compactLayout && styles.settingButtonsCompact]}>
               <TouchableOpacity
                 style={[
                   styles.settingBtn,
+                  compactLayout && styles.settingBtnCompact,
                   settings.defaultReadMode === 'basic' && styles.settingBtnActive,
                 ]}
                 onPress={() => onDefaultReadModeChange?.('basic')}
@@ -183,6 +202,7 @@ export default function BottomPanel({
               <TouchableOpacity
                 style={[
                   styles.settingBtn,
+                  compactLayout && styles.settingBtnCompact,
                   settings.defaultReadMode === 'advanced' && styles.settingBtnActive,
                 ]}
                 onPress={() => onDefaultReadModeChange?.('advanced')}
@@ -200,13 +220,17 @@ export default function BottomPanel({
             </View>
           </View>
 
-          <View style={styles.settingRow}>
-            <Text style={styles.settingLabel}>Green Speed</Text>
-            <View style={styles.settingButtons}>
+          <View style={[styles.settingRow, compactLayout && styles.settingRowCompact]}>
+            <Text style={[styles.settingLabel, compactLayout && styles.settingLabelCompact]}>Green Speed</Text>
+            <View style={[styles.settingButtons, compactLayout && styles.settingButtonsCompact]}>
               {STIMP_PRESETS.map((preset) => (
                 <TouchableOpacity
                   key={preset.value}
-                  style={[styles.settingBtn, settings.greenSpeed === preset.value && styles.settingBtnActive]}
+                  style={[
+                    styles.settingBtn,
+                    compactLayout && styles.settingBtnCompact,
+                    settings.greenSpeed === preset.value && styles.settingBtnActive,
+                  ]}
                   onPress={() => onGreenSpeedChange?.(preset.value)}
                   activeOpacity={0.7}
                 >
@@ -215,19 +239,27 @@ export default function BottomPanel({
                   </Text>
                 </TouchableOpacity>
               ))}
-              <TouchableOpacity style={styles.stimpCalBtn} onPress={onStimpCalibrate} activeOpacity={0.7}>
+              <TouchableOpacity
+                style={[styles.stimpCalBtn, compactLayout && styles.stimpCalBtnCompact]}
+                onPress={onStimpCalibrate}
+                activeOpacity={0.7}
+              >
                 <Text style={styles.stimpCalText}>Test</Text>
               </TouchableOpacity>
             </View>
           </View>
 
-          <View style={styles.settingRow}>
-            <Text style={styles.settingLabel}>Grain</Text>
-            <View style={styles.settingButtons}>
+          <View style={[styles.settingRow, compactLayout && styles.settingRowCompact]}>
+            <Text style={[styles.settingLabel, compactLayout && styles.settingLabelCompact]}>Grain</Text>
+            <View style={[styles.settingButtons, compactLayout && styles.settingButtonsCompact]}>
               {GRAIN_OPTIONS.map((grain) => (
                 <TouchableOpacity
                   key={grain.key}
-                  style={[styles.settingBtn, settings.grainDir === grain.key && styles.grainBtnActive]}
+                  style={[
+                    styles.settingBtn,
+                    compactLayout && styles.settingBtnCompact,
+                    settings.grainDir === grain.key && styles.grainBtnActive,
+                  ]}
                   onPress={() => onGrainChange?.(grain.key)}
                   activeOpacity={0.7}
                 >
@@ -260,16 +292,17 @@ export default function BottomPanel({
             </View>
           )}
 
-          <View style={styles.btnRow}>
-            <TouchableOpacity style={[styles.btn, styles.btnOutline]} onPress={onAdvancedRead} activeOpacity={0.7}>
-              <Text style={styles.btnOutlineText}>Advanced Read</Text>
+          <View style={[styles.btnRow, compactLayout && styles.compactBtnRow]}>
+            <TouchableOpacity style={[styles.btn, compactLayout && styles.btnCompact, styles.btnOutline]} onPress={onAdvancedRead} activeOpacity={0.7}>
+              <Text style={[styles.btnOutlineText, compactLayout && styles.btnTextCompact]}>Advanced Read</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.btn, styles.btnTraining]} onPress={onTrainingRead} activeOpacity={0.7}>
-              <Text style={styles.btnTrainingText}>Training Read</Text>
+            <TouchableOpacity style={[styles.btn, compactLayout && styles.btnCompact, styles.btnTraining]} onPress={onTrainingRead} activeOpacity={0.7}>
+              <Text style={[styles.btnTrainingText, compactLayout && styles.btnTextCompact]}>Training Read</Text>
             </TouchableOpacity>
           </View>
         </View>
       )}
+      </ScrollView>
     </View>
   );
 }
@@ -280,9 +313,12 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    paddingHorizontal: 14,
     paddingTop: 12,
+    paddingHorizontal: 14,
     backgroundColor: 'rgba(0,0,0,0.84)',
+  },
+  panelContent: {
+    gap: 0,
   },
 
   distRow: {
@@ -290,6 +326,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
     marginBottom: 12,
+  },
+  compactDistRow: {
+    marginBottom: 10,
+    gap: 8,
   },
   distLabel: {
     fontSize: 11,
@@ -315,6 +355,10 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     gap: 6,
   },
+  qualityCardCompact: {
+    paddingVertical: 9,
+    paddingHorizontal: 11,
+  },
   qualityLabel: {
     fontSize: 10,
     textTransform: 'uppercase',
@@ -326,6 +370,9 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '800',
   },
+  qualityValueCompact: {
+    fontSize: 18,
+  },
   qualityHint: {
     fontSize: 12,
     lineHeight: 18,
@@ -336,6 +383,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 8,
     marginBottom: 10,
+  },
+  compactStatsRow: {
+    gap: 6,
   },
   statCard: {
     flex: 1,
@@ -365,11 +415,20 @@ const styles = StyleSheet.create({
     gap: 10,
     marginBottom: 8,
   },
+  compactBtnRow: {
+    gap: 8,
+  },
   btn: {
     flex: 1,
     paddingVertical: 13,
     borderRadius: 14,
     alignItems: 'center',
+  },
+  btnCompact: {
+    paddingVertical: 12,
+  },
+  btnTextCompact: {
+    fontSize: 13,
   },
   btnPrimary: { backgroundColor: '#4caf50' },
   btnPrimaryText: { color: '#000', fontWeight: '700', fontSize: 14 },
@@ -422,13 +481,25 @@ const styles = StyleSheet.create({
     gap: 8,
     marginBottom: 10,
   },
+  settingRowCompact: {
+    flexDirection: 'column',
+    alignItems: 'stretch',
+    gap: 6,
+  },
   settingLabel: {
     fontSize: 11,
     color: '#9e9e9e',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
+  settingLabelCompact: {
+    marginBottom: 2,
+  },
   settingButtons: { flex: 1, flexDirection: 'row', gap: 5 },
+  settingButtonsCompact: {
+    flexWrap: 'wrap',
+    rowGap: 6,
+  },
   settingBtn: {
     flex: 1,
     paddingVertical: 5,
@@ -437,6 +508,11 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.08)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.12)',
+  },
+  settingBtnCompact: {
+    flexBasis: '31%',
+    flexGrow: 0,
+    minWidth: 82,
   },
   settingBtnActive: { backgroundColor: 'rgba(76,175,80,0.25)', borderColor: '#4caf50' },
   settingBtnText: { fontSize: 11, fontWeight: '600', color: '#9e9e9e' },
@@ -448,6 +524,10 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(33,150,243,0.18)',
     borderWidth: 1,
     borderColor: 'rgba(33,150,243,0.4)',
+  },
+  stimpCalBtnCompact: {
+    minWidth: 82,
+    alignItems: 'center',
   },
   stimpCalText: { fontSize: 11, fontWeight: '600', color: '#64b5f6' },
   grainBtnActive: { backgroundColor: 'rgba(255,152,0,0.25)', borderColor: '#ff9800' },

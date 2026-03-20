@@ -4,22 +4,11 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  Platform,
 } from 'react-native';
 import Slider from '@react-native-community/slider';
 
-/**
- * Optional "Guess Before You Read" overlay.
- *
- * The golfer inputs:
- *   1. Which direction they think the putt breaks (Left / Straight / Right)
- *   2. How many inches of break they estimate
- *   3. How far they think they should hit the putt (effective / playing distance)
- *
- * After submitting, MainScreen reveals the measured values and shows accuracy.
- */
 export default function GuessOverlay({ puttDistance, onSubmit, onSkip }) {
-  const [breakDir, setBreakDir] = useState('STRAIGHT'); // 'LEFT' | 'STRAIGHT' | 'RIGHT'
+  const [breakDir, setBreakDir] = useState('STRAIGHT');
   const [breakInches, setBreakInches] = useState(0);
   const [hitDistance, setHitDistance] = useState(puttDistance);
 
@@ -35,24 +24,22 @@ export default function GuessOverlay({ puttDistance, onSubmit, onSkip }) {
           Guess the break and pace before measuring
         </Text>
 
-        {/* Break direction */}
         <Text style={styles.sectionLabel}>Break Direction</Text>
         <View style={styles.dirRow}>
-          {['LEFT', 'STRAIGHT', 'RIGHT'].map((d) => (
+          {['LEFT', 'STRAIGHT', 'RIGHT'].map((direction) => (
             <TouchableOpacity
-              key={d}
-              style={[styles.dirBtn, breakDir === d && styles.dirBtnActive]}
-              onPress={() => setBreakDir(d)}
+              key={direction}
+              style={[styles.dirBtn, breakDir === direction && styles.dirBtnActive]}
+              onPress={() => setBreakDir(direction)}
               activeOpacity={0.7}
             >
-              <Text style={[styles.dirText, breakDir === d && styles.dirTextActive]}>
-                {d === 'LEFT' ? '← Left' : d === 'RIGHT' ? 'Right →' : 'Straight'}
+              <Text style={[styles.dirText, breakDir === direction && styles.dirTextActive]}>
+                {direction === 'LEFT' ? 'Left' : direction === 'RIGHT' ? 'Right' : 'Straight'}
               </Text>
             </TouchableOpacity>
           ))}
         </View>
 
-        {/* Break amount (only if not straight) */}
         {breakDir !== 'STRAIGHT' && (
           <>
             <Text style={styles.sectionLabel}>
@@ -72,7 +59,6 @@ export default function GuessOverlay({ puttDistance, onSubmit, onSkip }) {
           </>
         )}
 
-        {/* Hit distance (playing distance guess) */}
         <Text style={styles.sectionLabel}>
           Hit Distance: <Text style={styles.valHighlight}>{hitDistance} ft</Text>
         </Text>
@@ -88,7 +74,6 @@ export default function GuessOverlay({ puttDistance, onSubmit, onSkip }) {
           thumbTintColor="#4caf50"
         />
 
-        {/* Buttons */}
         <View style={styles.btnRow}>
           <TouchableOpacity style={styles.skipBtn} onPress={onSkip} activeOpacity={0.7}>
             <Text style={styles.skipText}>Skip</Text>
@@ -102,9 +87,7 @@ export default function GuessOverlay({ puttDistance, onSubmit, onSkip }) {
   );
 }
 
-/** Results comparison shown after measurement */
 export function GuessResults({ guess, actual, onClose }) {
-  // actual: { breakDir: 'L'|'R'|null, breakInches, playDist }
   const dirMatch =
     (guess.breakDir === 'LEFT' && actual.breakDir === 'L') ||
     (guess.breakDir === 'RIGHT' && actual.breakDir === 'R') ||
@@ -113,7 +96,6 @@ export function GuessResults({ guess, actual, onClose }) {
   const inchDiff = Math.abs(guess.breakInches - actual.breakInches);
   const distDiff = Math.abs(guess.hitDistance - actual.playDist);
 
-  // Score: 0-100
   let score = 100;
   if (!dirMatch) score -= 30;
   score -= Math.min(40, inchDiff * 3);
@@ -136,13 +118,11 @@ export function GuessResults({ guess, actual, onClose }) {
       <View style={styles.card}>
         <Text style={styles.title}>Your Read Accuracy</Text>
 
-        {/* Grade */}
         <View style={styles.gradeRow}>
           <Text style={[styles.grade, { color: gradeColor }]}>{grade}</Text>
           <Text style={styles.scoreText}>{score}/100</Text>
         </View>
 
-        {/* Comparison table */}
         <View style={styles.compareRow}>
           <Text style={styles.compareHeader}>{'               '}</Text>
           <Text style={[styles.compareHeader, styles.compareYou]}>You</Text>
@@ -271,7 +251,6 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   submitText: { color: '#000', fontWeight: '700', fontSize: 14 },
-  // Results
   gradeRow: {
     flexDirection: 'row',
     alignItems: 'center',
