@@ -25,6 +25,12 @@ import { detectHoleInPhoto } from '../utils/holeDetection';
 import { estimateDistanceFromScreen } from '../utils/puttingPhysics';
 import { getReadOutcome } from '../utils/puttRead';
 import { getReadQuality } from '../utils/readQuality';
+import { getReadState } from '../utils/readState';
+import {
+  buildDiagnosticSnapshot,
+  recordDiagnosticError,
+  recordDiagnosticEvent,
+} from '../utils/fieldDiagnostics';
 
 const ANDROID_STATUS_BAR = Platform.OS === 'android' ? (StatusBar.currentHeight ?? 24) : 0;
 
@@ -49,9 +55,15 @@ export default function MainScreen() {
     readings: state.slope.readings,
     hole: state.hole,
   });
+  const readState = getReadState({
+    slope: state.slope,
+    hole: state.hole,
+    ui: state.ui,
+  });
   const holePlacementActive = state.hole.status === 'placing';
   const holeNeedsConfirm = state.hole.status === 'autoDetected';
   const previewReady = state.slope.hasSlope && state.hole.status === 'confirmed';
+  const lastReadStateKeyRef = useRef(null);
 
   const mag = Math.sqrt((gamma ** 2) + (beta ** 2)).toFixed(1);
   const dirText = gamma > 0.5 ? 'breaks right' : gamma < -0.5 ? 'breaks left' : 'straight';
@@ -59,16 +71,25 @@ export default function MainScreen() {
   const liveText = `${mag} deg slope - ${dirText}${gradText}`;
 
   const openQuickCalibration = useCallback(() => {
+    recordDiagnosticEvent('read-open', 'Quick read opened', {
+      distanceFt: state.settings.distance,
+    });
     dispatch({ type: 'OPEN_CALIBRATION', mode: 'single' });
-  }, [dispatch]);
+  }, [dispatch, state.settings.distance]);
 
   const openAdvancedCalibration = useCallback(() => {
+    recordDiagnosticEvent('read-open', 'Advanced read opened', {
+      distanceFt: state.settings.distance,
+    });
     dispatch({ type: 'OPEN_CALIBRATION', mode: 'compound' });
-  }, [dispatch]);
+  }, [dispatch, state.settings.distance]);
 
   const cancelCalibration = useCallback(() => {
+    recordDiagnosticEvent('read-cancel', 'Calibration canceled', {
+      mode: state.calibration.mode,
+    });
     dispatch({ type: 'CANCEL_CALIBRATION' });
-  }, [dispatch]);
+  }, [dispatch, state.calibration.mode]);
 
   const captureSlope = useCallback((readings) => {
     let guessActual = null;
@@ -91,11 +112,33 @@ export default function MainScreen() {
       };
     }
 
+    const averageStability = readings.length
+      ? Math.round(readings.reduce((sum, reading) => sum + (reading.stabilityScore ?? 0), 0) / readings.length)
+      : null;
+
+    recordDiagnosticEvent('slope-captured', readings.length > 1 ? 'Advanced slope captured' : 'Quick slope captured', {
+      ...buildDiagnosticSnapshot({
+        readState,
+        readQuality,
+        settings: state.settings,
+        slope: {
+          ...state.slope,
+          hasSlope: readings.length > 0,
+          readings,
+        },
+        hole: state.hole,
+        ui: state.ui,
+      }),
+      capturedReadings: readings.length,
+      averageStability,
+    });
+
     dispatch({ type: 'CAPTURE_SLOPE', readings, guessActual });
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-  }, [dispatch, state.guess.pending, state.settings.distance, state.settings.greenSpeed, state.settings.grainDir]);
+  }, [dispatch, readQuality, readState, state.guess.pending, state.hole, state.settings, state.slope, state.ui]);
 
   const resetSession = useCallback(() => {
+    recordDiagnosticEvent('session-reset', 'Read reset');
     dispatch({ type: 'RESET_SESSION' });
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   }, [dispatch]);
@@ -103,6 +146,12 @@ export default function MainScreen() {
   const startPreview = useCallback(() => {
     if (!previewReady || isAnimating) return;
 
+    recordDiagnosticEvent('preview-open', 'Preview opened', {
+      readQuality: readQuality.label,
+      readScore: readQuality.score,
+      distanceFt: state.settings.distance,
+      holeSource: state.hole.source,
+    });
     dispatch({ type: 'OPEN_PREVIEW' });
     setIsAnimating(true);
     setAnimT(0);
@@ -127,9 +176,10 @@ export default function MainScreen() {
     };
 
     animFrameRef.current = requestAnimationFrame(tick);
-  }, [dispatch, isAnimating, previewReady]);
+  }, [dispatch, isAnimating, previewReady, readQuality.label, readQuality.score, state.hole.source, state.settings.distance]);
 
   const closePreview = useCallback(() => {
+    recordDiagnosticEvent('preview-close', 'Preview closed');
     dispatch({ type: 'CLOSE_PREVIEW' });
     setIsAnimating(false);
     setAnimT(null);
@@ -139,6 +189,20 @@ export default function MainScreen() {
   useEffect(() => () => {
     if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
   }, []);
+
+  useEffect(() => {
+    const nextKey = `${readState.title}|${readState.meta}|${state.ui.isPreviewMode}`;
+    if (lastReadStateKeyRef.current === nextKey) return;
+
+    lastReadStateKeyRef.current = nextKey;
+    recordDiagnosticEvent('read-state', 'Read state changed', {
+      state: readState.title,
+      context: readState.meta,
+      previewMode: state.ui.isPreviewMode,
+      quality: readQuality.label,
+      qualityScore: readQuality.score,
+    });
+  }, [readQuality.label, readQuality.score, readState.meta, readState.title, state.ui.isPreviewMode]);
 
   useEffect(() => {
     if (Platform.OS !== 'android') return;
@@ -191,10 +255,12 @@ export default function MainScreen() {
   ]);
 
   const setHole = useCallback(() => {
+    recordDiagnosticEvent('hole-set-start', 'Hole placement opened');
     dispatch({ type: 'START_HOLE_PLACEMENT' });
   }, [dispatch]);
 
   const cancelHolePlacement = useCallback(() => {
+    recordDiagnosticEvent('hole-set-cancel', 'Hole placement canceled');
     dispatch({ type: 'CANCEL_HOLE_PLACEMENT' });
   }, [dispatch]);
 
@@ -209,12 +275,18 @@ export default function MainScreen() {
       position: { x: locationX, y: locationY },
       estimatedDistanceFt,
     });
+    recordDiagnosticEvent('hole-manual', 'Manual hole confirmed', {
+      x: locationX,
+      y: locationY,
+      estimatedDistanceFt,
+    });
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
   }, [dispatch, height, holePlacementActive]);
 
   const handleAutoDetectHole = useCallback(async () => {
     if (!cameraRef.current || !holePlacementActive) return;
 
+    recordDiagnosticEvent('hole-scan-start', 'Auto hole detection started');
     dispatch({ type: 'START_HOLE_SCAN' });
 
     try {
@@ -226,46 +298,64 @@ export default function MainScreen() {
       const position = await detectHoleInPhoto(photo.uri, width, height);
 
       if (!position) {
+        recordDiagnosticEvent('hole-scan-empty', 'Auto hole detection found no cup');
         dispatch({ type: 'HOLE_SCAN_FAILED' });
         return;
       }
 
       const estimatedDistanceFt = estimateDistanceFromScreen(position.y / height, betaRef.current);
       dispatch({ type: 'SET_AUTO_DETECTED_HOLE', position, estimatedDistanceFt });
+      recordDiagnosticEvent('hole-scan-success', 'Auto hole candidate found', {
+        x: position.x,
+        y: position.y,
+        estimatedDistanceFt,
+      });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (error) {
+      recordDiagnosticError('hole-scan', error);
       console.warn('[MainScreen] auto-detect error:', error?.message);
       dispatch({ type: 'HOLE_SCAN_FAILED' });
     }
   }, [dispatch, height, holePlacementActive, width]);
 
   const handleUseDetectedHole = useCallback(() => {
+    recordDiagnosticEvent('hole-auto-confirm', 'Auto-detected hole confirmed', {
+      estimatedDistanceFt: state.hole.estimatedDistanceFt,
+    });
     dispatch({ type: 'CONFIRM_AUTO_HOLE' });
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-  }, [dispatch]);
+  }, [dispatch, state.hole.estimatedDistanceFt]);
 
   const handleAdjustDetectedHole = useCallback(() => {
+    recordDiagnosticEvent('hole-auto-adjust', 'Auto-detected hole switched to manual adjust');
     dispatch({ type: 'ADJUST_AUTO_HOLE' });
   }, [dispatch]);
 
   const openStimpCalibration = useCallback(() => {
+    recordDiagnosticEvent('stimp-open', 'Stimp calibration opened');
     dispatch({ type: 'OPEN_STIMP_CALIBRATION' });
   }, [dispatch]);
 
   const handleStimpResult = useCallback((greenSpeed) => {
+    recordDiagnosticEvent('stimp-result', 'Green speed updated from stimp calibration', {
+      greenSpeed,
+    });
     dispatch({ type: 'APPLY_STIMP_RESULT', greenSpeed });
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   }, [dispatch]);
 
   const openTrainingGuess = useCallback(() => {
+    recordDiagnosticEvent('training-open', 'Training read opened');
     dispatch({ type: 'OPEN_TRAINING_GUESS' });
   }, [dispatch]);
 
   const handleGuessSubmit = useCallback((guess) => {
+    recordDiagnosticEvent('training-submit', 'Training guess submitted', guess);
     dispatch({ type: 'SUBMIT_TRAINING_GUESS', guess });
   }, [dispatch]);
 
   const handleGuessSkip = useCallback(() => {
+    recordDiagnosticEvent('training-skip', 'Training guess skipped');
     dispatch({ type: 'SKIP_TRAINING_GUESS' });
   }, [dispatch]);
 
@@ -277,7 +367,11 @@ export default function MainScreen() {
         ? 'SET HOLE'
         : state.ui.isPreviewMode
           ? 'PREVIEW'
-          : 'READ MODE';
+          : previewReady
+            ? 'READ READY'
+            : state.slope.hasSlope || state.hole.status === 'confirmed'
+              ? 'IN PROGRESS'
+              : 'READ MODE';
 
   const pillStyle = state.calibration.isOpen
     ? styles.pillCal
@@ -287,7 +381,11 @@ export default function MainScreen() {
         ? styles.pillHole
         : state.ui.isPreviewMode
           ? styles.pillAnim
-          : styles.pillRead;
+          : previewReady
+            ? styles.pillRead
+            : state.slope.hasSlope || state.hole.status === 'confirmed'
+              ? styles.pillProgress
+              : styles.pillRead;
 
   return (
     <View style={styles.container}>
@@ -313,6 +411,7 @@ export default function MainScreen() {
               animT={animT}
               grainDir={state.settings.grainDir}
               readQuality={readQuality}
+              readState={readState}
             />
           </View>
         </Pressable>
@@ -413,6 +512,7 @@ export default function MainScreen() {
             settings={state.settings}
             hole={state.hole}
             readQuality={readQuality}
+            readState={readState}
             onClose={closePreview}
           />
         )}
@@ -424,6 +524,7 @@ export default function MainScreen() {
             settings={state.settings}
             ui={state.ui}
             readQuality={readQuality}
+            readState={readState}
             onDistanceChange={(distance) => dispatch({ type: 'SET_DISTANCE', distance })}
             onReadSlope={openQuickCalibration}
             onAdvancedRead={openAdvancedCalibration}
@@ -486,6 +587,7 @@ const styles = StyleSheet.create({
   },
   pill: { paddingHorizontal: 12, paddingVertical: 4, borderRadius: 20 },
   pillRead: { backgroundColor: '#4caf50' },
+  pillProgress: { backgroundColor: '#78909c' },
   pillCal: { backgroundColor: '#ff9800' },
   pillScan: { backgroundColor: '#2196f3' },
   pillHole: { backgroundColor: '#ffeb3b' },

@@ -7,6 +7,7 @@ import {
   Platform,
 } from 'react-native';
 import { getReadOutcome } from '../utils/puttRead';
+import { getReadState } from '../utils/readState';
 
 function qualityColor(level) {
   if (level === 'high') return '#4caf50';
@@ -20,6 +21,7 @@ export default function PreviewMetrics({
   settings,
   hole,
   readQuality,
+  readState,
   onClose,
 }) {
   const outcome = getReadOutcome({
@@ -33,17 +35,25 @@ export default function PreviewMetrics({
   });
 
   const aimText = outcome.aim?.dir ? `${outcome.aim.inches}" ${outcome.aim.dirFull}` : 'Straight';
-  const holeText = hole.source === 'manual' ? 'Manual hole' : 'Auto hole';
+  const resolvedReadState = readState ?? getReadState({
+    slope,
+    hole,
+    ui: { isPreviewMode: true },
+  });
 
   return (
     <View style={styles.container}>
       <View style={styles.summaryRow}>
+        <View style={styles.summaryCopy}>
+          <Text style={styles.summaryTitle}>{resolvedReadState.title}</Text>
+          <Text style={styles.summaryMeta}>{resolvedReadState.meta}</Text>
+        </View>
         <View style={styles.summaryPill}>
           <Text style={[styles.summaryPillText, { color: qualityColor(readQuality.level) }]}>
             {readQuality.label}
+            {readQuality.score ? ` ${readQuality.score}` : ''}
           </Text>
         </View>
-        <Text style={styles.summaryMeta}>{holeText}</Text>
       </View>
 
       <View style={styles.metricsRow}>
@@ -83,6 +93,16 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: 8,
     paddingHorizontal: 2,
+    gap: 10,
+  },
+  summaryCopy: {
+    flex: 1,
+  },
+  summaryTitle: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '800',
+    marginBottom: 2,
   },
   summaryPill: {
     backgroundColor: 'rgba(0,0,0,0.38)',
@@ -99,8 +119,7 @@ const styles = StyleSheet.create({
   summaryMeta: {
     fontSize: 11,
     color: '#90a4ae',
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
+    letterSpacing: 0.4,
   },
   metricsRow: {
     flexDirection: 'row',

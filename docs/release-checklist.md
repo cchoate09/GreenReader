@@ -36,3 +36,4 @@ This is the operating checklist for Android releases while the app is in Play in
 
 - The app is currently targeting the Play `internal` track in `eas.json`.
 - Keep `releaseStatus` as `draft` until the build and metadata have been reviewed in Play Console.
+- For field testing, open `Advanced + Training` and use `Field Test Diagnostics` to save a snapshot after a strange read or share a report after an error.

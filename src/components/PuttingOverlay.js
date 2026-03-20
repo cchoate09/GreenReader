@@ -10,6 +10,7 @@ import Svg, {
 } from 'react-native-svg';
 import { grainEffect } from '../utils/puttingPhysics';
 import { getReadOutcome } from '../utils/puttRead';
+import { getReadState, getReadStateColor } from '../utils/readState';
 
 const GREEN = 'rgba(76,175,80,0.92)';
 const YELLOW = 'rgba(255,235,59,0.95)';
@@ -175,6 +176,7 @@ export default function PuttingOverlay({
   animT,
   grainDir = 'none',
   readQuality,
+  readState,
 }) {
   const holeX = hole.position?.x ?? W * 0.5;
   const holeY = hole.position?.y ?? H * 0.18;
@@ -184,6 +186,16 @@ export default function PuttingOverlay({
   const detectedMode = hole.status === 'autoDetected';
   const confirmedHole = hole.status === 'confirmed';
   const showProjectedLine = hasSlope && confirmedHole;
+  const resolvedReadState = readState ?? getReadState({
+    slope: {
+      hasSlope,
+      readings: slopeReadings,
+    },
+    hole,
+    ui: {
+      isPreviewMode: animT != null,
+    },
+  });
 
   if (!hasSlope && hole.status === 'unset') {
     return (
@@ -348,26 +360,31 @@ export default function PuttingOverlay({
           <Label
             cx={W * 0.5}
             cy={H * 0.12}
-            text={`${readQuality.label}${readQuality.score ? ` ${readQuality.score}` : ''}`}
-            color={qualityColor(readQuality.level)}
+            text={`${resolvedReadState.title} - ${readQuality.label}${readQuality.score ? ` ${readQuality.score}` : ''}`}
+            color={readQuality.level === 'low' ? qualityColor(readQuality.level) : getReadStateColor(resolvedReadState.tone)}
           />
         </G>
       )}
 
       {!isPreview && detectedMode && (
-        <Label cx={holeX} cy={holeY + 38} text="Detected hole" color="#ffeb3b" />
+        <Label cx={holeX} cy={holeY + 38} text={resolvedReadState.title} color="#ffeb3b" />
       )}
 
       {!isPreview && hasSlope && !confirmedHole && !detectedMode && (
-        <Label cx={W * 0.5} cy={H * 0.12} text="Set the hole to finish the read" color="#90a4ae" />
+        <Label cx={W * 0.5} cy={H * 0.12} text={resolvedReadState.title} color="#90a4ae" />
       )}
 
       {!isPreview && !hasSlope && confirmedHole && (
-        <Label cx={W * 0.5} cy={H * 0.12} text="Capture slope to finish the read" color="#90a4ae" />
+        <Label cx={W * 0.5} cy={H * 0.12} text={resolvedReadState.title} color="#90a4ae" />
       )}
 
-      {isPreview && showProjectedLine && readOutcome.aim?.dir && (
-        <Label cx={midLabelX} cy={midLabelY} text={readOutcome.aim.label} color="#4caf50" />
+      {isPreview && showProjectedLine && (
+        <>
+          <Label cx={W * 0.5} cy={H * 0.12} text={resolvedReadState.title} color={getReadStateColor(resolvedReadState.tone)} />
+          {readOutcome.aim?.dir && (
+            <Label cx={midLabelX} cy={midLabelY} text={readOutcome.aim.label} color="#4caf50" />
+          )}
+        </>
       )}
 
       {animBall && (

@@ -17,7 +17,9 @@ import {
 } from '../utils/puttingPhysics';
 import { getReadOutcome } from '../utils/puttRead';
 import { getReadQualityGuidance } from '../utils/readQuality';
+import { getReadState, getReadStateColor } from '../utils/readState';
 import ElevationProfile from './ElevationProfile';
+import DiagnosticsPanel from './DiagnosticsPanel';
 
 const STIMP_PRESETS = [
   { label: 'Slow', value: 7 },
@@ -42,28 +44,13 @@ function qualityColor(level) {
   return '#90a4ae';
 }
 
-function readStatusSummary({ hole, hasSlope }) {
-  if (hasSlope && hole.status === 'confirmed') {
-    return hole.source === 'manual'
-      ? 'Read ready. Manual hole confirmed.'
-      : 'Read ready. Auto-detected hole confirmed.';
-  }
-
-  if (hole.status === 'confirmed') {
-    return hole.source === 'manual' ? 'Manual hole locked' : 'Auto-detected hole locked';
-  }
-
-  if (hole.status === 'autoDetected') return 'Detected hole waiting for confirmation';
-  if (hole.status === 'placing') return 'Tap the hole on screen';
-  return 'Hole not set yet';
-}
-
 export default function BottomPanel({
   slope,
   hole,
   settings,
   ui,
   readQuality,
+  readState,
   onDistanceChange,
   onReadSlope,
   onAdvancedRead,
@@ -103,9 +90,11 @@ export default function BottomPanel({
   const previewReady = slope.hasSlope && hole.status === 'confirmed';
   const aimStr = outcome.aim ? outcome.aim.label : '--';
   const playStr = outcome.playDist != null ? `${outcome.playDist} ft` : '--';
-  const guidance = (readQuality.level === 'low' || readQuality.level === 'incomplete')
-    ? getReadQualityGuidance(readQuality)
-    : readStatusSummary({ hole, hasSlope: slope.hasSlope });
+  const resolvedReadState = readState ?? getReadState({ slope, hole, ui });
+  const guidance = readQuality.level === 'low'
+    ? `${resolvedReadState.detail} ${getReadQualityGuidance(readQuality)}`
+    : resolvedReadState.detail;
+  const qualityDisplay = `${readQuality.label}${readQuality.score ? ` ${readQuality.score}` : ''}`;
 
   return (
     <View style={styles.panel}>
@@ -131,15 +120,22 @@ export default function BottomPanel({
         <Text style={styles.distVal}>{settings.distance} ft</Text>
       </View>
 
-      <View style={[styles.qualityCard, compactLayout && styles.qualityCardCompact, { borderColor: qualityColor(readQuality.level) }]}>
-        <View>
-          <Text style={styles.qualityLabel}>Read Quality</Text>
-          <Text style={[styles.qualityValue, compactLayout && styles.qualityValueCompact, { color: qualityColor(readQuality.level) }]}>
-            {readQuality.label}
-            {readQuality.score ? ` ${readQuality.score}` : ''}
-          </Text>
+      <View style={[styles.statusCard, compactLayout && styles.statusCardCompact, { borderColor: getReadStateColor(resolvedReadState.tone) }]}>
+        <View style={styles.statusHeaderRow}>
+          <View style={styles.statusCopy}>
+            <Text style={styles.statusLabel}>Read State</Text>
+            <Text style={[styles.statusValue, compactLayout && styles.statusValueCompact, { color: getReadStateColor(resolvedReadState.tone) }]}>
+              {resolvedReadState.title}
+            </Text>
+          </View>
+          <View style={[styles.qualityPill, { borderColor: qualityColor(readQuality.level) }]}>
+            <Text style={[styles.qualityPillText, { color: qualityColor(readQuality.level) }]}>
+              {qualityDisplay}
+            </Text>
+          </View>
         </View>
-        <Text style={styles.qualityHint}>{guidance}</Text>
+        <Text style={styles.statusMeta}>{resolvedReadState.meta}</Text>
+        <Text style={styles.statusHint}>{guidance}</Text>
       </View>
 
       <View style={[styles.statsRow, compactLayout && styles.compactStatsRow]}>
@@ -300,6 +296,15 @@ export default function BottomPanel({
               <Text style={[styles.btnTrainingText, compactLayout && styles.btnTextCompact]}>Training Read</Text>
             </TouchableOpacity>
           </View>
+
+          <DiagnosticsPanel
+            slope={slope}
+            hole={hole}
+            settings={settings}
+            ui={ui}
+            readQuality={readQuality}
+            readState={resolvedReadState}
+          />
         </View>
       )}
       </ScrollView>
@@ -346,7 +351,7 @@ const styles = StyleSheet.create({
     textAlign: 'right',
   },
 
-  qualityCard: {
+  statusCard: {
     backgroundColor: 'rgba(0,0,0,0.58)',
     borderWidth: 1,
     borderRadius: 14,
@@ -355,25 +360,51 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     gap: 6,
   },
-  qualityCardCompact: {
+  statusCardCompact: {
     paddingVertical: 9,
     paddingHorizontal: 11,
   },
-  qualityLabel: {
+  statusHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 8,
+    marginBottom: 4,
+  },
+  statusCopy: {
+    flex: 1,
+  },
+  statusLabel: {
     fontSize: 10,
     textTransform: 'uppercase',
     letterSpacing: 0.8,
     color: '#9e9e9e',
     marginBottom: 2,
   },
-  qualityValue: {
+  statusValue: {
     fontSize: 20,
     fontWeight: '800',
   },
-  qualityValueCompact: {
+  statusValueCompact: {
     fontSize: 18,
   },
-  qualityHint: {
+  qualityPill: {
+    paddingVertical: 5,
+    paddingHorizontal: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+    backgroundColor: 'rgba(255,255,255,0.03)',
+  },
+  qualityPillText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  statusMeta: {
+    fontSize: 11,
+    color: '#90a4ae',
+    marginBottom: 4,
+  },
+  statusHint: {
     fontSize: 12,
     lineHeight: 18,
     color: '#b0bec5',

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { View, StyleSheet, Platform } from 'react-native';
+import { recordDiagnosticError } from '../utils/fieldDiagnostics';
 
 // Dynamically require ads module so Expo Go can skip the native dependency.
 let BannerAd, BannerAdSize, TestIds;
@@ -40,6 +41,7 @@ export default function AdBanner() {
         }}
         onAdLoaded={() => setAdLoaded(true)}
         onAdFailedToLoad={(error) => {
+          recordDiagnosticError('banner-ad-load', error, { platform: Platform.OS });
           if (__DEV__) {
             console.warn('[AdBanner] Failed to load:', error);
           }
