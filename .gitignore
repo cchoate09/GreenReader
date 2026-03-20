@@ -3,6 +3,7 @@ node_modules/
 .expo-home/
 .gradle-home*/
 .expo/
+.secrets/
 .idea/
 dist/
 *.jks

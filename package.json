@@ -6,7 +6,9 @@
     "start": "expo start",
     "android": "expo run:android",
     "ios": "expo run:ios",
-    "test": "jest"
+    "test": "jest",
+    "release:check": "node ./scripts/check-release-config.mjs",
+    "release:android:bundle": "node ./scripts/release-android-bundle.mjs"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "^2.1.2",

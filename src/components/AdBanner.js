@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { View, StyleSheet, Platform } from 'react-native';
 
-// Dynamically require ads module — gracefully handles Expo Go where native module is absent
+// Dynamically require ads module so Expo Go can skip the native dependency.
 let BannerAd, BannerAdSize, TestIds;
 let adsAvailable = false;
 try {
@@ -11,16 +11,15 @@ try {
   TestIds = ads.TestIds;
   adsAvailable = true;
 } catch (_) {
-  // Native module not available (running in Expo Go)
+  // Native ads module is not available in Expo Go.
 }
 
-// Test IDs in development, real IDs in production.
-// Replace the production IDs with your actual AdMob ad unit IDs.
+// iOS stays disabled in production until a real banner unit is provisioned.
 const AD_UNIT_ID = adsAvailable
   ? (__DEV__
       ? TestIds.ADAPTIVE_BANNER
       : Platform.select({
-          ios: 'ca-app-pub-XXXX/YYYY',       // TODO: replace with real iOS ad unit ID
+          ios: null,
           android: 'ca-app-pub-8879184280264151/6176886607',
         }))
   : null;
@@ -29,7 +28,6 @@ export default function AdBanner() {
   const [adLoaded, setAdLoaded] = useState(false);
   const [adError, setAdError] = useState(false);
 
-  // No native ads module → render nothing
   if (!adsAvailable || !AD_UNIT_ID || adError) return null;
 
   return (
@@ -42,7 +40,9 @@ export default function AdBanner() {
         }}
         onAdLoaded={() => setAdLoaded(true)}
         onAdFailedToLoad={(error) => {
-          console.warn('[AdBanner] Failed to load:', error);
+          if (__DEV__) {
+            console.warn('[AdBanner] Failed to load:', error);
+          }
           setAdError(true);
         }}
       />
