@@ -140,6 +140,28 @@ function qualityColor(level) {
   return '#90a4ae';
 }
 
+function QuickReadPrompt({ width, height }) {
+  const tipW = Math.min(width - 32, 332);
+  const tipH = 84;
+  const tipY = Math.min(Math.max(120, height * 0.16), 180);
+  const tipX = width / 2 - tipW / 2;
+
+  return (
+    <G>
+      <Rect x={tipX} y={tipY} width={tipW} height={tipH} rx={12} fill={LABEL_BG} />
+      <SvgText x={width / 2} y={tipY + 22} fontSize={13} fill="#90a4ae" textAnchor="middle">
+        Practice mode quick read
+      </SvgText>
+      <SvgText x={width / 2} y={tipY + 47} fontSize={13} fill="#ffffff" textAnchor="middle">
+        1. Read Slope near the ball
+      </SvgText>
+      <SvgText x={width / 2} y={tipY + 67} fontSize={12} fill="#ffffff" textAnchor="middle">
+        2. Set Hole and review Aim / Play As
+      </SvgText>
+    </G>
+  );
+}
+
 export default function PuttingOverlay({
   width: W,
   height: H,
@@ -164,19 +186,9 @@ export default function PuttingOverlay({
   const showProjectedLine = hasSlope && confirmedHole;
 
   if (!hasSlope && hole.status === 'unset') {
-    const tipW = Math.min(W - 24, 320);
     return (
       <Svg width={W} height={H}>
-        <Rect x={W / 2 - tipW / 2} y={H * 0.42} width={tipW} height={74} rx={12} fill={LABEL_BG} />
-        <SvgText x={W / 2} y={H * 0.42 + 22} fontSize={13} fill="#90a4ae" textAnchor="middle">
-          Practice mode quick read
-        </SvgText>
-        <SvgText x={W / 2} y={H * 0.42 + 44} fontSize={12} fill="#ffffff" textAnchor="middle">
-          1. Read Slope near the ball
-        </SvgText>
-        <SvgText x={W / 2} y={H * 0.42 + 62} fontSize={12} fill="#ffffff" textAnchor="middle">
-          2. Set Hole and review Aim / Play As
-        </SvgText>
+        <QuickReadPrompt width={W} height={H} />
       </Svg>
     );
   }
